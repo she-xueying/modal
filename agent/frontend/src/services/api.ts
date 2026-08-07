@@ -1,0 +1,202 @@
+/**
+ * API service: communicates with the FastAPI backend.
+ * Includes SSE streaming for chat responses.
+ */
+
+const API_BASE = '/api'
+
+// --------------------------------------------------------------------------- //
+//  Types
+// --------------------------------------------------------------------------- //
+
+export interface Conversation {
+  id: string
+  title: string
+  created_at: string
+  updated_at: string
+  message_count: number
+}
+
+export interface ConversationDetail extends Conversation {
+  messages: Message[]
+}
+
+export interface TravelInfo {
+  mode: string
+  icon: string
+  distance_km: number
+  duration_hours: number
+  duration_text: string
+}
+
+export interface MapData {
+  place: string
+  lat: number
+  lon: number
+  display_name: string
+  timezone: string
+  local_time: string
+  weekday: string
+  travel_info: TravelInfo[]
+}
+
+export interface Message {
+  id?: string
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  created_at?: string
+  mapData?: MapData
+}
+
+// --------------------------------------------------------------------------- //
+//  Conversation CRUD
+// --------------------------------------------------------------------------- //
+
+export async function listConversations(): Promise<Conversation[]> {
+  const resp = await fetch(`${API_BASE}/conversations`)
+  if (!resp.ok) throw new Error('获取对话列表失败')
+  return resp.json()
+}
+
+export async function getConversation(id: string): Promise<ConversationDetail> {
+  const resp = await fetch(`${API_BASE}/conversations/${id}`)
+  if (!resp.ok) throw new Error('获取对话详情失败')
+  return resp.json()
+}
+
+export async function createConversation(title: string = '新对话'): Promise<Conversation> {
+  const resp = await fetch(`${API_BASE}/conversations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title }),
+  })
+  if (!resp.ok) throw new Error('创建对话失败')
+  return resp.json()
+}
+
+export async function deleteConversation(id: string): Promise<void> {
+  const resp = await fetch(`${API_BASE}/conversations/${id}`, { method: 'DELETE' })
+  if (!resp.ok) throw new Error('删除对话失败')
+}
+
+export async function updateConversationTitle(id: string, title: string): Promise<Conversation> {
+  const resp = await fetch(
+    `${API_BASE}/conversations/${id}?title=${encodeURIComponent(title)}`,
+    { method: 'PATCH' },
+  )
+  if (!resp.ok) throw new Error('更新标题失败')
+  return resp.json()
+}
+
+export async function truncateConversation(conversationId: string, keepCount: number): Promise<void> {
+  const resp = await fetch(
+    `${API_BASE}/conversations/${conversationId}/truncate?keep_count=${keepCount}`,
+    { method: 'POST' },
+  )
+  if (!resp.ok) throw new Error('截断对话失败')
+}
+
+export async function batchDeleteConversations(ids: string[]): Promise<void> {
+  const resp = await fetch(`${API_BASE}/conversations/batch-delete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  })
+  if (!resp.ok) throw new Error('批量删除失败')
+}
+
+export async function deleteMessage(conversationId: string, messageIndex: number): Promise<void> {
+  const resp = await fetch(
+    `${API_BASE}/conversations/${conversationId}/messages/${messageIndex}`,
+    { method: 'DELETE' },
+  )
+  if (!resp.ok) throw new Error('删除消息失败')
+}
+
+// --------------------------------------------------------------------------- //
+//  Streaming Chat (SSE)
+// --------------------------------------------------------------------------- //
+
+export interface ChatStreamCallbacks {
+  onConversationId?: (id: string) => void
+  onMessage: (chunk: string) => void
+  onMap?: (data: MapData) => void
+  onError?: (error: string) => void
+  onDone?: () => void
+}
+
+export async function streamChat(
+  message: string,
+  conversationId: string | null,
+  callbacks: ChatStreamCallbacks,
+  signal?: AbortSignal,
+  userLat?: number,
+  userLon?: number,
+): Promise<void> {
+  const body: Record<string, any> = {
+    conversation_id: conversationId,
+    message,
+  }
+  if (userLat != null && userLon != null) {
+    body.user_lat = userLat
+    body.user_lon = userLon
+  }
+
+  const resp = await fetch(`${API_BASE}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  })
+
+  if (!resp.ok) {
+    throw new Error(`请求失败: ${resp.status}`)
+  }
+
+  const reader = resp.body!.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    buffer += decoder.decode(value, { stream: true })
+
+    // Process complete SSE events (separated by \n\n)
+    const parts = buffer.split('\n\n')
+    buffer = parts.pop() || '' // Keep incomplete part in buffer
+
+    for (const part of parts) {
+      const line = part.trim()
+      if (!line.startsWith('data: ')) continue
+
+      const jsonStr = line.slice(6)
+      try {
+        const data = JSON.parse(jsonStr)
+
+        switch (data.type) {
+          case 'conversation':
+            callbacks.onConversationId?.(data.id)
+            break
+          case 'message':
+            callbacks.onMessage(data.content)
+            break
+          case 'map':
+            callbacks.onMap?.(data.data)
+            break
+          case 'error':
+            callbacks.onError?.(data.content)
+            break
+          case 'done':
+            callbacks.onDone?.()
+            return
+        }
+      } catch {
+        // Ignore malformed JSON
+      }
+    }
+  }
+
+  callbacks.onDone?.()
+}
