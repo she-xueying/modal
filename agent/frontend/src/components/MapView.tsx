@@ -2,6 +2,7 @@ import React from 'react'
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
 import L from 'leaflet'
 import { EnvironmentOutlined, ClockCircleOutlined, CarOutlined, AimOutlined } from '@ant-design/icons'
+import { CompassOutlined } from '@ant-design/icons'
 
 // Fix default marker icon for Leaflet in bundler environment
 delete (L.Icon.Default.prototype as any)._getIconUrl
@@ -37,6 +38,11 @@ interface MapViewProps {
 const MapView: React.FC<MapViewProps> = ({ data }) => {
   const { lat, lon, display_name, timezone, local_time, weekday, travel_info } = data
 
+  const openInBaiduMaps = () => {
+    const url = `https://map.baidu.com/?latlng=${lat},${lon}&name=${encodeURIComponent(display_name)}`
+    window.open(url, '_blank')
+  }
+
   return (
     <div className="map-container">
       <div className="map-header">
@@ -47,6 +53,9 @@ const MapView: React.FC<MapViewProps> = ({ data }) => {
       </div>
 
       <div className="map-body">
+        <div className="map-baidu-btn" onClick={openInBaiduMaps} title="在百度地图中查看详细位置">
+          <CompassOutlined /> 在百度地图中查看
+        </div>
         <MapContainer
           center={[lat, lon]}
           zoom={11}

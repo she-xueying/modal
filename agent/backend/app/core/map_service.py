@@ -14,7 +14,6 @@ from datetime import datetime, timezone as tz_module
 from typing import Any
 
 import httpx
-from geopy.geocoders import Nominatim
 from timezonefinder import TimezoneFinder
 
 
@@ -30,21 +29,42 @@ _tf = TimezoneFinder()
 #  Geocoding
 # --------------------------------------------------------------------------- #
 
-def geocode_location(place_name: str) -> dict[str, Any]:
+async def geocode_location(place_name: str) -> dict[str, Any]:
     """Geocode a place name to coordinates using Nominatim.
 
-    Returns dict with: lat, lon, display_name, raw
+    Uses httpx directly for async behavior and full timeout control.
+    Returns dict with: lat, lon, display_name
     """
-    geolocator = Nominatim(user_agent="smart-agent-ai")
-    location = geolocator.geocode(place_name, language="zh")
-    if location is None:
-        raise MapError(f"未找到地点: {place_name}")
-
-    return {
-        "lat": location.latitude,
-        "lon": location.longitude,
-        "display_name": location.address or place_name,
+    url = "https://nominatim.osm.org/search"
+    params = {
+        "q": place_name,
+        "format": "json",
+        "limit": 1,
+        "accept-language": "zh",
     }
+    headers = {"User-Agent": "smart-agent-ai"}
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(url, params=params, headers=headers)
+        if resp.status_code != 200:
+            raise MapError(f"Nominatim 返回错误状态码: {resp.status_code}")
+        data = resp.json()
+        if not data:
+            raise MapError(f"未找到地点: {place_name}")
+        result = data[0]
+        return {
+            "lat": float(result["lat"]),
+            "lon": float(result["lon"]),
+            "display_name": result.get("display_name") or place_name,
+        }
+    except MapError:
+        raise
+    except httpx.TimeoutException:
+        raise MapError(f"地理编码超时，请稍后重试: {place_name}")
+    except httpx.HTTPError as e:
+        raise MapError(f"地理编码请求失败: {e}")
+    except (KeyError, ValueError, IndexError) as e:
+        raise MapError(f"解析地理编码结果失败: {e}")
 
 
 # --------------------------------------------------------------------------- #
@@ -219,7 +239,7 @@ async def map_search(
     weekday, travel_info (if user location provided).
     """
     # 1. Geocode
-    geo = geocode_location(place)
+    geo = await geocode_location(place)
     lat = geo["lat"]
     lon = geo["lon"]
 
