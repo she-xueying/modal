@@ -2,7 +2,6 @@ import React from 'react'
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
 import L from 'leaflet'
 import { EnvironmentOutlined, ClockCircleOutlined, CarOutlined, AimOutlined } from '@ant-design/icons'
-import { CompassOutlined } from '@ant-design/icons'
 
 // Fix default marker icon for Leaflet in bundler environment
 delete (L.Icon.Default.prototype as any)._getIconUrl
@@ -11,6 +10,48 @@ L.Icon.Default.mergeOptions({
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 })
+
+// ------------------------------------------------------------------ //
+//  Coordinate conversion: WGS-84 -> GCJ-02
+//  国内地图瓦片使用 GCJ-02 坐标系，需将 Nominatim 返回的 WGS-84 转换
+// ------------------------------------------------------------------ //
+
+const GCJ_A = 6378245.0
+const GCJ_EE = 0.00669342162296594323
+
+function _transformLat(x: number, y: number): number {
+  let ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x))
+  ret += ((20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0) / 3.0
+  ret += ((20.0 * Math.sin(y * Math.PI) + 40.0 * Math.sin((y / 3.0) * Math.PI)) * 2.0) / 3.0
+  ret += ((160.0 * Math.sin((y / 12.0) * Math.PI) + 320.0 * Math.sin((y * Math.PI) / 30.0)) * 2.0) / 3.0
+  return ret
+}
+
+function _transformLon(x: number, y: number): number {
+  let ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x))
+  ret += ((20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0) / 3.0
+  ret += ((20.0 * Math.sin(x * Math.PI) + 40.0 * Math.sin((x / 3.0) * Math.PI)) * 2.0) / 3.0
+  ret += ((150.0 * Math.sin((x / 12.0) * Math.PI) + 300.0 * Math.sin((x / 30.0) * Math.PI)) * 2.0) / 3.0
+  return ret
+}
+
+function _outOfChina(lat: number, lon: number): boolean {
+  return lon < 72.004 || lon > 137.8347 || lat < 0.8293 || lat > 55.8271
+}
+
+/** Convert WGS-84 to GCJ-02, returns [lat, lon]. */
+export function wgs84ToGcj02(lat: number, lon: number): [number, number] {
+  if (_outOfChina(lat, lon)) return [lat, lon]
+  let dLat = _transformLat(lon - 105.0, lat - 35.0)
+  let dLon = _transformLon(lon - 105.0, lat - 35.0)
+  const radLat = (lat / 180.0) * Math.PI
+  let magic = Math.sin(radLat)
+  magic = 1 - GCJ_EE * magic * magic
+  const sqrtMagic = Math.sqrt(magic)
+  dLat = (dLat * 180.0) / ((GCJ_A * (1 - GCJ_EE)) / (magic * sqrtMagic) * Math.PI)
+  dLon = (dLon * 180.0) / ((GCJ_A / sqrtMagic) * Math.cos(radLat) * Math.PI)
+  return [lat + dLat, lon + dLon]
+}
 
 export interface TravelInfo {
   mode: string
@@ -37,11 +78,7 @@ interface MapViewProps {
 
 const MapView: React.FC<MapViewProps> = ({ data }) => {
   const { lat, lon, display_name, timezone, local_time, weekday, travel_info } = data
-
-  const openInBaiduMaps = () => {
-    const url = `https://map.baidu.com/?latlng=${lat},${lon}&name=${encodeURIComponent(display_name)}`
-    window.open(url, '_blank')
-  }
+  const [mapLat, mapLon] = wgs84ToGcj02(lat, lon)
 
   return (
     <div className="map-container">
@@ -53,20 +90,19 @@ const MapView: React.FC<MapViewProps> = ({ data }) => {
       </div>
 
       <div className="map-body">
-        <div className="map-baidu-btn" onClick={openInBaiduMaps} title="在百度地图中查看详细位置">
-          <CompassOutlined /> 在百度地图中查看
-        </div>
         <MapContainer
-          center={[lat, lon]}
+          center={[mapLat, mapLon]}
           zoom={11}
           scrollWheelZoom={false}
           style={{ height: '280px', width: '100%' }}
         >
           <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution='&copy; OpenStreetMap'
+            url="https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}"
+            subdomains="1234"
+            maxZoom={18}
+            attribution='&copy; AutoNavi'
           />
-          <Marker position={[lat, lon]}>
+          <Marker position={[mapLat, mapLon]}>
             <Popup>{display_name}</Popup>
           </Marker>
         </MapContainer>
