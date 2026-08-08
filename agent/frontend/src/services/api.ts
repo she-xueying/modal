@@ -46,6 +46,7 @@ export interface Message {
   content: string
   created_at?: string
   mapData?: MapData
+  map_data?: MapData | string | null
 }
 
 // --------------------------------------------------------------------------- //
@@ -61,7 +62,16 @@ export async function listConversations(): Promise<Conversation[]> {
 export async function getConversation(id: string): Promise<ConversationDetail> {
   const resp = await fetch(`${API_BASE}/conversations/${id}`)
   if (!resp.ok) throw new Error('获取对话详情失败')
-  return resp.json()
+  const detail = (await resp.json()) as ConversationDetail
+  // Restore persisted map_data (object or JSON string) into mapData
+  detail.messages = (detail.messages || []).map((m) => {
+    if (m.map_data) {
+      m.mapData =
+        typeof m.map_data === 'string' ? JSON.parse(m.map_data) : m.map_data
+    }
+    return m
+  })
+  return detail
 }
 
 export async function createConversation(title: string = '新对话'): Promise<Conversation> {

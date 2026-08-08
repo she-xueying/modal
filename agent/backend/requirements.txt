@@ -24,3 +24,6 @@ tavily-python==0.5.0
 # File handling
 python-multipart==0.0.12
 aiofiles==24.1.0
+
+# IANA timezone data for Windows (zoneinfo)
+tzdata==2026.3

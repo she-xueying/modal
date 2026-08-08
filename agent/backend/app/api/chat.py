@@ -15,6 +15,7 @@ from app.models.schemas import (
     ConversationCreate,
     ConversationDetail,
     ConversationOut,
+    MessageOut,
 )
 from app.services.chat_service import chat_stream, get_or_create_conversation, save_message
 
@@ -111,7 +112,10 @@ def get_conversation(conversation_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="对话不存在")
     out = ConversationDetail.model_validate(conv)
     out.message_count = len(conv.messages)
-    out.messages = sorted(conv.messages, key=lambda m: m.created_at)
+    out.messages = [
+        MessageOut.model_validate(m)
+        for m in sorted(conv.messages, key=lambda m: m.created_at)
+    ]
     return out
 
 

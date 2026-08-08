@@ -78,9 +78,14 @@ def get_location_time(lat: float, lon: float) -> dict[str, Any]:
         # Fallback: use UTC
         tz_name = "UTC"
 
-    from zoneinfo import ZoneInfo
-    tz = ZoneInfo(tz_name)
-    now_local = datetime.now(tz)
+    try:
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo(tz_name)
+        now_local = datetime.now(tz)
+    except Exception:
+        # Fallback: if tzdata / zoneinfo is unavailable, use UTC
+        tz_name = "UTC"
+        now_local = datetime.now(tz_module.utc)
 
     return {
         "timezone": tz_name,

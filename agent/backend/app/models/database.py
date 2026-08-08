@@ -81,10 +81,24 @@ class Message(Base):
     )
     role = Column(String(20), nullable=False)  # "user" | "assistant" | "system"
     content = Column(Text, nullable=False, default="")
+    map_data = Column(Text, nullable=True)  # JSON-encoded MapData (assistant)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
 
     conversation = relationship("Conversation", back_populates="messages")
 
 
+def _ensure_columns() -> None:
+    """Add missing columns to existing tables (lightweight dev migration)."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(engine)
+    if "messages" in inspector.get_table_names():
+        cols = {c["name"] for c in inspector.get_columns("messages")}
+        if "map_data" not in cols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE messages ADD COLUMN map_data TEXT"))
+            print("[database] added column messages.map_data")
+
+
 # Create tables on import
 Base.metadata.create_all(engine)
+_ensure_columns()

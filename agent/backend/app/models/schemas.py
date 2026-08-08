@@ -1,7 +1,8 @@
 """Pydantic request / response schemas for the API layer."""
 
+import json
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # --------------------------------------------------------------------------- #
@@ -27,6 +28,17 @@ class MessageOut(BaseModel):
     role: str
     content: str
     created_at: datetime
+    map_data: dict | None = None
+
+    @field_validator("map_data", mode="before")
+    @classmethod
+    def _parse_map_data(cls, v):
+        if isinstance(v, str) and v:
+            try:
+                return json.loads(v)
+            except (ValueError, TypeError):
+                return None
+        return v
 
     model_config = {"from_attributes": True}
 

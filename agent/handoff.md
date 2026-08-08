@@ -1,7 +1,7 @@
 # 项目交接文档 handoff.md
 
 > 本文档面向全新会话，提供完整的项目背景、当前进度、卡点、下一步计划及踩坑记录。
-> 最后更新时间：2026-08-07
+> 最后更新时间：2026-08-08
 
 ---
 
@@ -54,10 +54,11 @@
 
 ### 当前状态
 
-- 后端服务运行在 **端口 8000**（uvicorn）
-- 前端 Vite 运行在 **端口 5177**（注意：5173-5176 可能被遗留的 Vite 进程占用）
-- 地图功能代码已全部完成，但**尚未进行端到端测试**
-- 地图数据（MapData）仅存在于前端内存中（SSE 流），**未持久化到数据库**——这是已知限制
+- 后端服务运行在 **端口 8000**（uvicorn，Python 3.14，venv 位于 `backend/.venv`）
+- 前端 Vite 运行在 **端口 5173**（默认端口，当前无遗留进程）
+- 地图功能**已通过端到端测试**（"北京/上海/杭州在哪里"均验证通过：LLM 调用 map_search → SSE yield map → 前端渲染）
+- 地图数据（MapData）**已持久化**到数据库（`Message.map_data` JSON 字段），刷新页面后可还原
+- web_search（Tavily）代码与**降级路径已验证**，但需配置**真实 TAVILY_API_KEY** 才能真正联网搜索
 
 ---
 
@@ -100,11 +101,12 @@
 
 ## 四、卡点与已知问题
 
-1. **Tavily API Key 未配置**：`web_search` 工具代码完成但无法测试，需在 `backend/.env` 中配置 `TAVILY_API_KEY`
-2. **地图功能未端到端测试**：代码完成，但尚未用实际用户查询验证完整流程（LLM 调用 map_search → 后端 yield map 数据 → 前端渲染地图）
-3. **地图数据未持久化**：MapData 仅在 SSE 流中传递，刷新页面后丢失。数据库 `messages` 表只存文本内容。如需持久化，需扩展 schema
-4. **多个 Vite 进程遗留**：5173-5176 端口可能被旧进程占用，重启前需 `taskkill /F /IM node.exe`
+1. **Tavily API Key 未配置**：`backend/.env` 中 `TAVILY_API_KEY` 仍是占位符，需替换为真实 key。已加占位符检测，未配置时会明确提示"TAVILY_API_KEY is not configured"
+2. ~~**地图功能未端到端测试**~~ **已完成**：已用"北京/上海/杭州在哪里"验证完整流程
+3. ~~**地图数据未持久化**~~ **已修复**：`Message` 模型新增 `map_data` JSON 字段（SQLite 启动时自动迁移），对话详情返回解析后的 map_data，前端加载时还原为地图
+4. ~~**多个 Vite 进程遗留**~~ **已清理**：当前无残留进程，Vite 运行在默认端口 5173
 5. **react-leaflet 版本约束**：项目使用 React 18，必须用 `react-leaflet@4`（v5 要求 React 19），安装时需加 `--legacy-peer-deps`
+6. **前端 `tsc -b` 构建报错（已修复）**：`tsconfig.node.json` 缺少 `composite: true`；TS 5.9 不允许 referenced 项目 `composite + noEmit`，已改为 `composite + emitDeclarationOnly`（输出到 `node_modules/.tmp`）
 
 ---
 
@@ -113,9 +115,10 @@
 按 `DEVELOPMENT.md` 的阶段规划：
 
 ### 立即应做
-- [ ] 端到端测试地图功能（启动后端，前端提问"北京在哪里"验证）
-- [ ] 配置 Tavily API Key 并测试 web_search
-- [ ] 清理遗留的 Vite 进程
+- [x] 端到端测试地图功能（已用"北京/上海/杭州在哪里"验证：LLM 调用 map_search → SSE yield map 数据 → 前端渲染）
+- [x] 清理遗留的 Vite 进程（当前无残留）
+- [x] 地图数据持久化（`Message.map_data` 字段，刷新后可还原）
+- [ ] 配置 Tavily API Key 并测试 web_search（降级路径已验证，缺真实 key）
 
 ### Phase 2：图像识别
 - 集成多模态模型（GPT-4V / 火山引擎视觉模型）
@@ -168,10 +171,20 @@
 - **现状**：前端在 mount 时调用 `getCurrentPosition`，未授权时出行时长为空
 - **教训**：应有降级方案（让用户手动输入位置），当前未实现
 
-### 6. 地图数据未持久化
+### 6. 地图数据未持久化（已修复）
 - **问题**：刷新后地图消失
 - **原因**：SSE 流只传到前端内存，DB 只存文本
-- **教训**：如需持久化，应在 Message 模型增加 `map_data` JSON 字段
+- **解决**：`Message` 模型增加 `map_data` JSON 字段；`database.py` 增加 `_ensure_columns()` 做轻量迁移（`ALTER TABLE messages ADD COLUMN map_data TEXT`）；`MessageOut` 用 field_validator 解析；前端 `getConversation` 还原为 `mapData`
+
+### 7. Windows 时区解析失败（zoneinfo）
+- **问题**：`ZoneInfo('Asia/Shanghai')` 报 `No time zone found with key Asia/Shanghai`
+- **原因**：Windows 无系统 IANA 时区库，Python zoneinfo 需要 `tzdata` 包
+- **解决**：`pip install tzdata` 并加入 requirements.txt；`map_service.get_location_time` 增加 UTC 兜底
+
+### 8. 前端 tsc -b 构建报错
+- **问题**：`TS6306 Referenced project must have composite` / `TS6310 may not disable emit`
+- **原因**：`tsconfig.node.json` 缺少 `composite: true`，且 TS 5.9 不允许 referenced 项目同时 `composite + noEmit`
+- **解决**：`tsconfig.node.json` 改为 `composite: true + emitDeclarationOnly: true`，`outDir`/`tsBuildInfoFile` 指向 `node_modules/.tmp`
 
 ---
 
@@ -187,15 +200,15 @@ TAVILY_API_KEY=your_tavily_key  # 未配置
 
 ### 启动后端
 ```bash
-cd d:\modal\agent\backend
-.venv\Scripts\activate
-python -m uvicorn app.main:app --reload --port 8000
+cd F:\modal\modal\agent\backend
+# Python 3.14（可用 F:\python\python.exe 或 backend\.venv 内的解释器）
+.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
 ```
 
 ### 启动前端
 ```bash
-cd d:\modal\agent\frontend
-npm run dev
+cd F:\modal\modal\agent\frontend
+npm run dev   # 默认端口 5173
 ```
 
 ### 前端代理

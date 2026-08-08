@@ -18,8 +18,9 @@ async def tavily_search(query: str, max_results: int = 5) -> str:
     Returns a formatted string with search results that can be
     injected into the LLM context.
     """
-    if not settings.tavily_api_key:
-        raise SearchError("TAVILY_API_KEY is not configured")
+    key = (settings.tavily_api_key or "").strip()
+    if not key or key.startswith("your_") or "your_tavily" in key:
+        raise SearchError("TAVILY_API_KEY is not configured (set it in backend/.env)")
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(

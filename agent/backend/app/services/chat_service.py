@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 from app.core.llm import LLMError, llm_client
 from app.core.prompts import SYSTEM_PROMPT
 from app.core.search import ALL_TOOLS, TOOL_EXECUTORS, SearchError
-from app.core.map_service import map_search, map_result_to_text, MapError
+from app.core.map_service import map_search, map_result_to_text
 from app.models.database import Conversation, Message
 
 # Maximum number of past messages to include as context (excluding system prompt)
@@ -64,9 +64,17 @@ def load_history(db: Session, conv: Conversation) -> list[dict[str, str]]:
     return history
 
 
-def save_message(db: Session, conv: Conversation, role: str, content: str) -> Message:
+def save_message(
+    db: Session,
+    conv: Conversation,
+    role: str,
+    content: str,
+    map_data: dict | None = None,
+) -> Message:
     """Persist a message and update conversation timestamp."""
     msg = Message(conversation_id=conv.id, role=role, content=content)
+    if map_data is not None:
+        msg.map_data = json.dumps(map_data, ensure_ascii=False)
     db.add(msg)
     conv.updated_at = datetime.now(timezone.utc)
     db.commit()
@@ -93,6 +101,7 @@ async def chat_stream(
 
     # 2. Non-streaming call with tools to check if search/map is needed
     full_response = ""
+    saved_map_data: dict | None = None
     try:
         resp = await llm_client.chat_with_tools(
             messages=messages,
@@ -131,10 +140,11 @@ async def chat_stream(
                         user_lon=user_lon,
                     )
                     # Yield map data to frontend for rendering
+                    saved_map_data = map_data
                     yield {"type": "map", "data": map_data}
                     # Convert to text for LLM context
                     tool_result = map_result_to_text(map_data)
-                except MapError as e:
+                except Exception as e:
                     tool_result = f"地图查询失败: {e}"
 
             # Handle web_search and other tools
@@ -178,6 +188,8 @@ async def chat_stream(
             except LLMError as e:
                 yield f"[错误] 生成回复失败: {e}"
 
-    # 5. Persist the assistant response (if non-empty)
-    if full_response.strip():
-        save_message(db, conv, "assistant", full_response)
+    # 5. Persist the assistant response (save even if only map data)
+    if full_response.strip() or saved_map_data is not None:
+        save_message(
+            db, conv, "assistant", full_response, map_data=saved_map_data
+        )
