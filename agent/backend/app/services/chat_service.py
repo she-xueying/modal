@@ -26,7 +26,23 @@ from app.core.prompts import SYSTEM_PROMPT
 from app.core.search import ALL_TOOLS, TOOL_EXECUTORS, SearchError
 from app.core.map_service import map_search, map_result_to_text
 from app.core.weather_service import weather_search, weather_result_to_text
-from app.models.database import Conversation, Message
+from app.models.database import Conversation, Message, Setting
+
+DEFAULT_LOCATION_KEY = "default_weather_location"
+
+
+def _read_default_weather_location(db: Session) -> dict | None:
+    """Read the user's saved default weather location from settings."""
+    row = db.get(Setting, DEFAULT_LOCATION_KEY)
+    if row is None:
+        return None
+    try:
+        data = json.loads(row.value)
+        if isinstance(data, dict) and data.get("lat") is not None and data.get("lon") is not None:
+            return data
+    except (ValueError, TypeError):
+        pass
+    return None
 
 # Maximum number of past messages to include as context (excluding system prompt)
 MAX_CONTEXT_MESSAGES = 20
@@ -157,10 +173,16 @@ async def chat_stream(
             elif fn_name == "weather_search":
                 place = fn_args.get("place", "")
                 try:
+                    # Fall back to the user's saved default if no explicit
+                    # place and no geolocation are available
+                    default_loc = _read_default_weather_location(db)
                     weather_data = await weather_search(
                         place=place,
                         user_lat=user_lat,
                         user_lon=user_lon,
+                        default_lat=default_loc["lat"] if default_loc else None,
+                        default_lon=default_loc["lon"] if default_loc else None,
+                        default_name=default_loc["display_name"] if default_loc else None,
                     )
                     saved_weather_data = weather_data
                     # Yield weather data to frontend for rendering

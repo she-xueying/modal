@@ -191,9 +191,13 @@ async def weather_search(
     place: str = "",
     user_lat: float | None = None,
     user_lon: float | None = None,
+    default_lat: float | None = None,
+    default_lon: float | None = None,
+    default_name: str | None = None,
 ) -> dict[str, Any]:
-    """Query weather for a place (or the user's location).
+    """Query weather for a place, the user's location, or the saved default.
 
+    Resolution priority: explicit place -> user location -> saved default.
     Returns dict with: place, display_name, lat, lon, current, daily, hourly.
     """
     lat: float | None = None
@@ -210,6 +214,9 @@ async def weather_search(
     elif user_lat is not None and user_lon is not None:
         lat, lon = user_lat, user_lon
         display_name = "我的位置"
+    elif default_lat is not None and default_lon is not None:
+        lat, lon = default_lat, default_lon
+        display_name = default_name or "默认地点"
     else:
         raise WeatherError("缺少地点信息，无法查询天气")
 

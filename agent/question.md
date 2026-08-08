@@ -1,14 +1,40 @@
 # 开发过程记录 question.md
 
 > 记录各功能开发过程中遇到的问题、解决方案，以及涉及修改的文件。
-> 新增功能时：概述功能 → 列出遇到的问题（现象/原因/解决/教训）→ 列出修改的文件及改动要点。
+> 新增功能时：概述功能 → 描述开发流程与优化 → 列出遇到的问题 → 列出修改的文件及改动要点。
 
 ---
 
 ## 天气功能
 
-> 简介：实时天气查询（Open-Meteo，免费无 key），含详细预报与用户可配置默认地点。
+> 简介：实时天气查询（Open-Meteo，免费无 key），含详细预报、地点引导与用户可配置默认地点。
 > 对应提交：d65a1785（集成）、60399c93（详细预报 + 默认地点）
+
+### 开发流程
+
+#### 阶段一：初始问题——用户问"今天天气如何"，模型不知道用户在哪里
+
+- 现象：用户只问"今天天气如何"，没有说城市。模型没有用户所在位置的信息，不知道按哪里查询，结果要么无法回答，要么凭训练知识产生幻觉、编造天气。
+- 根因：天气查询需要具体坐标/地点，但模型不知道用户在哪个城市，系统也没有缺省处理。
+
+#### 阶段二：优化一——没给地点时，模型引导用户给出具体地点再回答
+
+- 目标：用户没给地点时不再报错或编造，而是先引导用户说出城市。
+- 实现方式：
+  - 系统提示词（prompts.py）增加规则：天气问题若缺少地点信息，应主动询问用户要查询哪个城市/地点，不要猜测用户位置或编造天气。
+  - weather_service 在"无地点、无定位、无默认地点"时返回明确的"缺少地点信息"错误。
+  - 该错误作为工具结果喂回模型，模型按提示词把失败转成一句引导语，例如"请问您想知道哪个城市或地点的天气？"。
+- 效果：模型会先追问地点，等用户给出城市后再查询，不再凭记忆编造。
+
+#### 阶段三：优化二——更具体的地址：引导开定位；无定位用默认地点，有定位用定位
+
+- 目标：用户想查询更具体的当前位置天气时，引导开启定位；未开定位用默认地点，开了定位用定位地点。
+- 实现方式：
+  - 前端挂载时调用浏览器定位（navigator.geolocation），授权后把 user_lat/user_lon 随消息传给后端。
+  - 后端 weather_search 按优先级解析地点：用户明确给的地点 → 用户定位 → 用户设置的默认地点。
+  - 默认地点由用户在天气卡片上点击"设为默认地点"写入 settings 表。
+  - 三者都没有时，模型按阶段二的规则引导用户提供地点或开启定位。
+- 效果：开了定位按定位地点回答；没开定位但有默认地点按默认地点回答；都没有则引导用户。
 
 ### 遇到的问题
 
@@ -49,17 +75,17 @@
 
 ### 修改的文件
 
-- backend/app/core/weather_service.py：新增，天气服务核心，负责地理编码、Open-Meteo 查询（当前/7天/24小时/详情指标）与结果格式化
+- backend/app/core/weather_service.py：新增，天气服务核心，负责地理编码、Open-Meteo 查询（当前/7天/24小时/详情指标）与结果格式化；地点解析顺序为"地点 → 用户定位 → 默认地点"，都无则报缺少地点
 - backend/app/core/search.py：新增 weather_search 工具定义，并加入 ALL_TOOLS
-- backend/app/services/chat_service.py：对 weather_search 做特殊处理（向前端 yield 天气数据 + 向 LLM 喂文本），并持久化天气数据
+- backend/app/services/chat_service.py：对 weather_search 做特殊处理（向前端 yield 天气数据 + 向 LLM 喂文本），并持久化天气数据；从 settings 表读取默认地点传入 weather_search
 - backend/app/core/llm.py：流式调用加固，把网络/流式异常统一包装成 LLMError
-- backend/app/core/prompts.py：系统提示词增加天气能力说明，引导天气问题调用 weather_search
+- backend/app/core/prompts.py：系统提示词增加天气能力说明与"缺少地点时引导用户给出城市"的规则
 - backend/app/models/database.py：Message 增加 weather_data 字段；新增 settings 表（存默认地点）
 - backend/app/models/schemas.py：MessageOut 增加 weather_data；新增 DefaultLocation schema
 - backend/app/api/chat.py：新增默认地点 GET/PUT/DELETE 接口；消息返回时解析 weather_data
 - frontend/src/components/WeatherCard.tsx：新增，详细天气面板（当前详情、24小时、7天预报、设为默认地点）
 - frontend/src/services/api.ts：新增天气类型、SSE weather 事件、默认地点 API；加载对话时还原 weather_data
 - frontend/src/stores/useStore.ts：新增默认地点状态与操作
-- frontend/src/components/ChatPanel.tsx：挂载时加载默认地点；处理 weather 流式回调
+- frontend/src/components/ChatPanel.tsx：挂载时请求定位并加载默认地点；处理 weather 流式回调
 - frontend/src/components/MessageBubble.tsx：渲染天气卡片
 - frontend/src/styles/global.css：新增天气面板样式

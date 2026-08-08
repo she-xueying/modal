@@ -61,7 +61,8 @@
 - 地图功能**已通过端到端测试**（"北京/上海/杭州在哪里"均验证通过：LLM 调用 map_search → SSE yield map → 前端渲染）
 - 地图数据（MapData）**已持久化**到数据库（`Message.map_data` JSON 字段），刷新页面后可还原
 - **天气功能已集成**：`weather_search` 工具（Open-Meteo，免费无 key），前端**详细天气面板**（当前详情/24小时/7天预报），`Message.weather_data` 已持久化（刷新可还原）
-- **默认地点（用户可配置）**：`settings` 表 + `GET/PUT/DELETE /api/settings/default-location`，天气卡片可设为默认地点（暂不用于自动兜底）
+- **默认地点（用户可配置）**：`settings` 表 + `GET/PUT/DELETE /api/settings/default-location`，天气卡片可设为默认地点，已接入兜底（无地点且无定位时按默认地点查询）
+- **地点引导流程**：无地点/无定位/无默认时，模型主动询问用户城市；定位授权后按定位查询（前端 navigator.geolocation 传 user_lat/user_lon）
 - web_search（Tavily）代码与**降级路径已验证**，但需配置**真实 TAVILY_API_KEY** 才能真正联网搜索
 
 ---
