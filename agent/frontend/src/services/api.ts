@@ -40,6 +40,35 @@ export interface MapData {
   travel_info: TravelInfo[]
 }
 
+export interface CurrentWeather {
+  temperature: number | null
+  apparent_temperature: number | null
+  humidity: number | null
+  precipitation: number | null
+  wind_speed: number | null
+  wind_direction: number | null
+  wind_dir_text: string
+  weather_code: number | null
+  condition: string
+  is_day: boolean
+}
+
+export interface DailyWeather {
+  weather_code: number | null
+  condition: string
+  temp_max: number | null
+  temp_min: number | null
+}
+
+export interface WeatherData {
+  place: string
+  display_name: string
+  lat: number
+  lon: number
+  current: CurrentWeather
+  today: DailyWeather
+}
+
 export interface Message {
   id?: string
   role: 'user' | 'assistant' | 'system'
@@ -47,6 +76,8 @@ export interface Message {
   created_at?: string
   mapData?: MapData
   map_data?: MapData | string | null
+  weatherData?: WeatherData
+  weather_data?: WeatherData | string | null
 }
 
 // --------------------------------------------------------------------------- //
@@ -68,6 +99,12 @@ export async function getConversation(id: string): Promise<ConversationDetail> {
     if (m.map_data) {
       m.mapData =
         typeof m.map_data === 'string' ? JSON.parse(m.map_data) : m.map_data
+    }
+    if (m.weather_data) {
+      m.weatherData =
+        typeof m.weather_data === 'string'
+          ? JSON.parse(m.weather_data)
+          : m.weather_data
     }
     return m
   })
@@ -131,6 +168,7 @@ export interface ChatStreamCallbacks {
   onConversationId?: (id: string) => void
   onMessage: (chunk: string) => void
   onMap?: (data: MapData) => void
+  onWeather?: (data: WeatherData) => void
   onError?: (error: string) => void
   onDone?: () => void
 }
@@ -194,6 +232,9 @@ export async function streamChat(
             break
           case 'map':
             callbacks.onMap?.(data.data)
+            break
+          case 'weather':
+            callbacks.onWeather?.(data.data)
             break
           case 'error':
             callbacks.onError?.(data.content)

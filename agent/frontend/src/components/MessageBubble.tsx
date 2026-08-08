@@ -5,8 +5,9 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { RobotOutlined, UserOutlined, CopyOutlined, EditOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons'
 import { message as antdMessage, Input, Popconfirm } from 'antd'
-import { MapData } from '../services/api'
+import { MapData, WeatherData } from '../services/api'
 import MapView from './MapView'
+import WeatherCard from './WeatherCard'
 
 const { TextArea } = Input
 
@@ -16,12 +17,13 @@ interface MessageBubbleProps {
   streaming?: boolean
   index?: number
   mapData?: MapData
+  weatherData?: WeatherData
   onEdit?: (index: number, newContent: string) => void
   onDelete?: (index: number) => void
   onRegenerate?: (index: number) => void
 }
 
-const MessageBubble: React.FC<MessageBubbleProps> = ({ role, content, streaming, index, mapData, onEdit, onDelete, onRegenerate }) => {
+const MessageBubble: React.FC<MessageBubbleProps> = ({ role, content, streaming, index, mapData, weatherData, onEdit, onDelete, onRegenerate }) => {
   const isUser = role === 'user'
   const [editing, setEditing] = React.useState(false)
   const [editValue, setEditValue] = React.useState(content)
@@ -95,6 +97,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ role, content, streaming,
         ) : (
           <>
             {mapData && <MapView data={mapData} />}
+            {weatherData && <WeatherCard data={weatherData} />}
             <div className={`message-bubble ${isUser ? 'user' : 'assistant'}`}>
               {isUser ? (
                 <span>{content}</span>

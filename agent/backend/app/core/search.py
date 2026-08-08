@@ -109,7 +109,30 @@ MAP_SEARCH_TOOL = {
     },
 }
 
-ALL_TOOLS = [WEB_SEARCH_TOOL, MAP_SEARCH_TOOL]
+WEATHER_SEARCH_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "weather_search",
+        "description": (
+            "当用户询问任何关于天气的问题（包括当前天气、气温、湿度、风力、降雨、空气质量、"
+            "今日或未来预报、是否适合出门/运动等）时，必须调用此工具获取实时天气，"
+            "不要根据训练知识编造天气数据。例如：'北京天气怎么样'、'明天上海会下雨吗'、'今天适合出门吗'。"
+            "如果用户没有指定地点（如'今天天气怎么样'），可不传 place，将使用用户所在位置查询。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "place": {
+                    "type": "string",
+                    "description": "要查询天气的地点名称（城市、区县、地标等），用户未指定地点时可省略",
+                },
+            },
+            "required": [],
+        },
+    },
+}
+
+ALL_TOOLS = [WEB_SEARCH_TOOL, MAP_SEARCH_TOOL, WEATHER_SEARCH_TOOL]
 
 
 # Map tool names to their async executor functions

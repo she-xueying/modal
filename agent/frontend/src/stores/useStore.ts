@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { Conversation, Message, MapData } from '../services/api'
+import { Conversation, Message, MapData, WeatherData } from '../services/api'
 
 interface ChatState {
   // Sidebar
@@ -25,6 +25,7 @@ interface ChatState {
   addMessage: (msg: Message) => void
   updateLastAssistantMessage: (content: string) => void
   setLastAssistantMapData: (data: MapData) => void
+  setLastAssistantWeatherData: (data: WeatherData) => void
   truncateMessages: (upToIndex: number) => void
   updateMessage: (index: number, content: string) => void
   setLoadingConversations: (v: boolean) => void
@@ -67,6 +68,15 @@ export const useStore = create<ChatState>((set) => ({
       const lastIdx = msgs.length - 1
       if (lastIdx >= 0 && msgs[lastIdx].role === 'assistant') {
         msgs[lastIdx] = { ...msgs[lastIdx], mapData: data }
+      }
+      return { messages: msgs }
+    }),
+  setLastAssistantWeatherData: (data) =>
+    set((s) => {
+      const msgs = [...s.messages]
+      const lastIdx = msgs.length - 1
+      if (lastIdx >= 0 && msgs[lastIdx].role === 'assistant') {
+        msgs[lastIdx] = { ...msgs[lastIdx], weatherData: data }
       }
       return { messages: msgs }
     }),

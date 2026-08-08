@@ -16,6 +16,7 @@ const ChatPanel: React.FC = () => {
     addMessage,
     updateLastAssistantMessage,
     setLastAssistantMapData,
+    setLastAssistantWeatherData,
     setActiveConversation,
     setStreaming,
     addConversation,
@@ -108,6 +109,9 @@ const ChatPanel: React.FC = () => {
         },
         onMap: (data) => {
           setLastAssistantMapData(data)
+        },
+        onWeather: (data) => {
+          setLastAssistantWeatherData(data)
         },
         onError: (err) => {
           updateLastAssistantMessage(`[错误] ${err}`)
@@ -275,6 +279,7 @@ const ChatPanel: React.FC = () => {
             streaming={streaming && idx === messages.length - 1 && msg.role === 'assistant'}
             index={idx}
             mapData={msg.mapData}
+            weatherData={msg.weatherData}
             onEdit={handleEdit}
             onDelete={handleDelete}
             onRegenerate={handleRegenerate}

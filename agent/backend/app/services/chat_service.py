@@ -25,6 +25,7 @@ from app.core.llm import LLMError, llm_client
 from app.core.prompts import SYSTEM_PROMPT
 from app.core.search import ALL_TOOLS, TOOL_EXECUTORS, SearchError
 from app.core.map_service import map_search, map_result_to_text
+from app.core.weather_service import weather_search, weather_result_to_text
 from app.models.database import Conversation, Message
 
 # Maximum number of past messages to include as context (excluding system prompt)
@@ -70,11 +71,14 @@ def save_message(
     role: str,
     content: str,
     map_data: dict | None = None,
+    weather_data: dict | None = None,
 ) -> Message:
     """Persist a message and update conversation timestamp."""
     msg = Message(conversation_id=conv.id, role=role, content=content)
     if map_data is not None:
         msg.map_data = json.dumps(map_data, ensure_ascii=False)
+    if weather_data is not None:
+        msg.weather_data = json.dumps(weather_data, ensure_ascii=False)
     db.add(msg)
     conv.updated_at = datetime.now(timezone.utc)
     db.commit()
@@ -102,10 +106,12 @@ async def chat_stream(
     # 2. Non-streaming call with tools to check if search/map is needed
     full_response = ""
     saved_map_data: dict | None = None
+    saved_weather_data: dict | None = None
     try:
         resp = await llm_client.chat_with_tools(
             messages=messages,
             tools=ALL_TOOLS,
+            temperature=0.2,
         )
     except LLMError as e:
         yield f"[错误] LLM 调用失败: {e}"
@@ -146,6 +152,23 @@ async def chat_stream(
                     tool_result = map_result_to_text(map_data)
                 except Exception as e:
                     tool_result = f"地图查询失败: {e}"
+
+            # Handle weather_search specially (needs user location fallback + frontend card)
+            elif fn_name == "weather_search":
+                place = fn_args.get("place", "")
+                try:
+                    weather_data = await weather_search(
+                        place=place,
+                        user_lat=user_lat,
+                        user_lon=user_lon,
+                    )
+                    saved_weather_data = weather_data
+                    # Yield weather data to frontend for rendering
+                    yield {"type": "weather", "data": weather_data}
+                    # Convert to text for LLM context
+                    tool_result = weather_result_to_text(weather_data)
+                except Exception as e:
+                    tool_result = f"天气查询失败: {e}"
 
             # Handle web_search and other tools
             elif fn_name in TOOL_EXECUTORS:
@@ -188,8 +211,10 @@ async def chat_stream(
             except LLMError as e:
                 yield f"[错误] 生成回复失败: {e}"
 
-    # 5. Persist the assistant response (save even if only map data)
-    if full_response.strip() or saved_map_data is not None:
+    # 5. Persist the assistant response (save even if only map/weather data)
+    if full_response.strip() or saved_map_data is not None or saved_weather_data is not None:
         save_message(
-            db, conv, "assistant", full_response, map_data=saved_map_data
+            db, conv, "assistant", full_response,
+            map_data=saved_map_data,
+            weather_data=saved_weather_data,
         )

@@ -576,3 +576,117 @@ html, body, #root {
   display: flex;
   align-items: center;
 }
+
+/* ---- Weather Card ---- */
+.weather-container {
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 8px;
+  background: linear-gradient(135deg, #eaf3ff 0%, #f5faff 100%);
+  max-width: 500px;
+}
+
+.weather-header {
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.7);
+  border-bottom: 1px solid #e8e8e8;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.weather-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  display: flex;
+  align-items: center;
+}
+
+.weather-cond-text {
+  font-size: 13px;
+  color: #1677ff;
+  font-weight: 500;
+}
+
+.weather-main {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 14px;
+}
+
+.weather-emoji {
+  font-size: 44px;
+  line-height: 1;
+}
+
+.weather-temp-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.weather-temp {
+  font-size: 36px;
+  font-weight: 700;
+  color: #333;
+  line-height: 1.1;
+}
+
+.weather-feels {
+  font-size: 12px;
+  color: #999;
+}
+
+.weather-today {
+  margin-left: auto;
+  text-align: right;
+}
+
+.weather-today-cond {
+  font-size: 13px;
+  color: #666;
+}
+
+.weather-today-temp {
+  font-size: 13px;
+  color: #333;
+  font-weight: 600;
+}
+
+.weather-details {
+  display: flex;
+  border-top: 1px solid #e8e8e8;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.weather-detail-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px;
+}
+
+.weather-detail-item + .weather-detail-item {
+  border-left: 1px solid #e8e8e8;
+}
+
+.weather-detail-icon {
+  font-size: 14px;
+  color: #1677ff;
+}
+
+.weather-detail-label {
+  font-size: 11px;
+  color: #999;
+}
+
+.weather-detail-value {
+  font-size: 13px;
+  color: #333;
+  font-weight: 500;
+}

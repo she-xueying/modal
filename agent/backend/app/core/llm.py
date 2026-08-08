@@ -95,29 +95,35 @@ class LLMClient:
             "stream": True,
         }
 
-        async with self.client.stream(
-            "POST", "/chat/completions", json=payload
-        ) as resp:
-            if resp.status_code != 200:
-                body = await resp.aread()
-                raise LLMError(
-                    f"LLM API error {resp.status_code}: {body.decode()}"
-                )
+        try:
+            async with self.client.stream(
+                "POST", "/chat/completions", json=payload
+            ) as resp:
+                if resp.status_code != 200:
+                    body = await resp.aread()
+                    raise LLMError(
+                        f"LLM API error {resp.status_code}: {body.decode()}"
+                    )
 
-            async for line in resp.aiter_lines():
-                if not line or not line.startswith("data: "):
-                    continue
-                data = line[6:]  # strip "data: " prefix
-                if data.strip() == "[DONE]":
-                    break
-                try:
-                    chunk = json.loads(data)
-                    delta = chunk["choices"][0].get("delta", {})
-                    content = delta.get("content", "")
-                    if content:
-                        yield content
-                except (json.JSONDecodeError, KeyError, IndexError):
-                    continue
+                async for line in resp.aiter_lines():
+                    if not line or not line.startswith("data: "):
+                        continue
+                    data = line[6:]  # strip "data: " prefix
+                    if data.strip() == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data)
+                        delta = chunk["choices"][0].get("delta", {})
+                        content = delta.get("content", "")
+                        if content:
+                            yield content
+                    except (json.JSONDecodeError, KeyError, IndexError):
+                        continue
+        except LLMError:
+            raise
+        except Exception as e:
+            # Wrap any streaming/network error so callers can degrade gracefully
+            raise LLMError(f"LLM 流式请求失败: {e}") from e
 
     # ------------------------------------------------------------------ #
     #  Tool-calling chat

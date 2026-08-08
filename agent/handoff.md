@@ -26,6 +26,7 @@
 | 后端 | FastAPI、Python、SQLite/SQLAlchemy、SSE 流式 |
 | LLM | 火山引擎 ARK API（`https://ark.cn-beijing.volces.com/api/v3`），模型 `glm-5-2-260617` |
 | 搜索 | Tavily API（联网搜索） |
+| 天气 | Open-Meteo（免费，无需 API key） |
 | 地图后端 | Nominatim（地理编码）、timezonefinder（离线时区）、OSRM（路径规划） |
 | 前端 | React 18、TypeScript、Vite、Ant Design、Zustand、react-markdown |
 | 地图前端 | Leaflet + react-leaflet@4 |
@@ -39,8 +40,9 @@
 1. **对话管理 CRUD**：创建、列表、详情、删除、标题编辑（PATCH）、批量删除（batch-delete）、按索引删除消息
 2. **SSE 流式聊天**：支持流式输出、中断（AbortController）、工具调用（OpenAI 兼容 function calling）
 3. **工具集成**：
-   - `web_search`（Tavily）— 代码完成，**未测试**（Tavily API Key 未配置）
-   - `map_search`（Nominatim + timezonefinder + OSRM）— 代码完成，**未端到端测试**
+   - `web_search`（Tavily）— 代码完成，**降级路径已验证**（Tavily API Key 未配置真实 key）
+   - `map_search`（Nominatim + timezonefinder + OSRM）— 代码完成，**已端到端测试**
+   - `weather_search`（Open-Meteo）— **已集成并测试**（按地点/按用户位置，前端天气卡片）
 4. **地图功能**：当用户询问某地点时，前端展示 Leaflet 地图，显示地点坐标、当前当地时间、星期、以及不同交通工具（驾车/步行/骑行/飞行）的耗时
 5. **消息操作**：
    - 用户消息右下侧：删除按钮（带 Popconfirm 确认）
@@ -58,6 +60,7 @@
 - 前端 Vite 运行在 **端口 5173**（默认端口，当前无遗留进程）
 - 地图功能**已通过端到端测试**（"北京/上海/杭州在哪里"均验证通过：LLM 调用 map_search → SSE yield map → 前端渲染）
 - 地图数据（MapData）**已持久化**到数据库（`Message.map_data` JSON 字段），刷新页面后可还原
+- **天气功能已集成**：`weather_search` 工具（Open-Meteo，免费无 key），前端天气卡片，`Message.weather_data` 已持久化（刷新可还原）
 - web_search（Tavily）代码与**降级路径已验证**，但需配置**真实 TAVILY_API_KEY** 才能真正联网搜索
 
 ---
@@ -69,7 +72,8 @@
 | 文件 | 说明 |
 |---|---|
 | `backend/app/core/map_service.py` | **新增**：地图服务核心（geocode、timezone、travel_info、map_search） |
-| `backend/app/core/search.py` | 工具定义，含 `WEB_SEARCH_TOOL` 和 `MAP_SEARCH_TOOL` |
+| `backend/app/core/weather_service.py` | **新增**：天气服务核心（Open-Meteo 查询、weather_search、结果格式化） |
+| `backend/app/core/search.py` | 工具定义，含 `WEB_SEARCH_TOOL`、`MAP_SEARCH_TOOL`、`WEATHER_SEARCH_TOOL` |
 | `backend/app/services/chat_service.py` | **重写**：流式聊天，支持 map 工具特殊处理（yield dict） |
 | `backend/app/api/chat.py` | SSE 端点 + batch-delete + delete message by index |
 | `backend/app/models/schemas.py` | `ChatRequest` 增加 `user_lat`/`user_lon` |
@@ -80,7 +84,8 @@
 
 | 文件 | 说明 |
 |---|---|
-| `frontend/src/components/MapView.tsx` | **新增**：Leaflet 地图组件 |
+| `frontend/src/components/MapView.tsx` | **新增**：Leaflet 地图组件（国内地图瓦片 + WGS84->GCJ02 转换） |
+| `frontend/src/components/WeatherCard.tsx` | **新增**：天气卡片组件 |
 | `frontend/src/components/ChatPanel.tsx` | 聊天主面板，含 geolocation、删除、重新生成、地图回调 |
 | `frontend/src/components/MessageBubble.tsx` | 消息气泡，含删除/重新生成按钮、地图渲染 |
 | `frontend/src/components/Sidebar.tsx` | 侧边栏，含批量删除模式 |
@@ -118,6 +123,7 @@
 - [x] 端到端测试地图功能（已用"北京/上海/杭州在哪里"验证：LLM 调用 map_search → SSE yield map 数据 → 前端渲染）
 - [x] 清理遗留的 Vite 进程（当前无残留）
 - [x] 地图数据持久化（`Message.map_data` 字段，刷新后可还原）
+- [x] 天气功能集成（`weather_search` + Open-Meteo + 前端天气卡片 + `weather_data` 持久化，已端到端测试）
 - [ ] 配置 Tavily API Key 并测试 web_search（降级路径已验证，缺真实 key）
 
 ### Phase 2：图像识别
@@ -225,6 +231,7 @@ Vite 配置了 `/api` 代理到 `http://localhost:8000`，前端通过 `/api/...
 | `conversation` | `id` | 新建对话时返回对话 ID |
 | `message` | `content` | 流式文本块 |
 | `map` | `data`（MapData） | 地图数据（地点、坐标、时间、出行信息） |
+| `weather` | `data`（WeatherData） | 天气数据（地点、当前天气、温度、湿度、风力、今日预报） |
 | `error` | `content` | 错误信息 |
 | `done` | — | 流结束 |
 

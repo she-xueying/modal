@@ -29,10 +29,21 @@ class MessageOut(BaseModel):
     content: str
     created_at: datetime
     map_data: dict | None = None
+    weather_data: dict | None = None
 
     @field_validator("map_data", mode="before")
     @classmethod
     def _parse_map_data(cls, v):
+        if isinstance(v, str) and v:
+            try:
+                return json.loads(v)
+            except (ValueError, TypeError):
+                return None
+        return v
+
+    @field_validator("weather_data", mode="before")
+    @classmethod
+    def _parse_weather_data(cls, v):
         if isinstance(v, str) and v:
             try:
                 return json.loads(v)

@@ -61,6 +61,8 @@ async def chat(req: ChatRequest, db: Session = Depends(get_db)):
                     # Text chunk
                     yield f"data: {json.dumps({'type': 'message', 'content': chunk})}\n\n"
         except Exception as e:
+            import logging
+            logging.exception("chat_stream error")
             yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
 
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
