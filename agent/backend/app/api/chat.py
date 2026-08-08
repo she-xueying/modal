@@ -10,11 +10,13 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.models.database import Conversation, Message, get_db
+from app.models.database import Setting
 from app.models.schemas import (
     ChatRequest,
     ConversationCreate,
     ConversationDetail,
     ConversationOut,
+    DefaultLocation,
     MessageOut,
 )
 from app.services.chat_service import chat_stream, get_or_create_conversation, save_message
@@ -195,6 +197,54 @@ def batch_delete_conversations(req: BatchDeleteRequest, db: Session = Depends(ge
 # --------------------------------------------------------------------------- #
 #  Delete a single message
 # --------------------------------------------------------------------------- #
+
+# --------------------------------------------------------------------------- #
+#  Default weather location (user-configurable)
+# --------------------------------------------------------------------------- #
+
+DEFAULT_LOCATION_KEY = "default_weather_location"
+
+
+def _read_default_location(db: Session) -> dict | None:
+    row = db.get(Setting, DEFAULT_LOCATION_KEY)
+    if row is None:
+        return None
+    try:
+        data = json.loads(row.value)
+        return data if isinstance(data, dict) else None
+    except (ValueError, TypeError):
+        return None
+
+
+@router.get("/settings/default-location")
+def get_default_location(db: Session = Depends(get_db)):
+    """Get the user's default weather location (or null)."""
+    return {"default": _read_default_location(db)}
+
+
+@router.put("/settings/default-location")
+def set_default_location(req: DefaultLocation, db: Session = Depends(get_db)):
+    """Set the user's default weather location."""
+    payload = req.model_dump()
+    row = db.get(Setting, DEFAULT_LOCATION_KEY)
+    if row is None:
+        row = Setting(key=DEFAULT_LOCATION_KEY, value=json.dumps(payload, ensure_ascii=False))
+        db.add(row)
+    else:
+        row.value = json.dumps(payload, ensure_ascii=False)
+    db.commit()
+    return {"default": payload}
+
+
+@router.delete("/settings/default-location")
+def delete_default_location(db: Session = Depends(get_db)):
+    """Clear the user's default weather location."""
+    row = db.get(Setting, DEFAULT_LOCATION_KEY)
+    if row is not None:
+        db.delete(row)
+        db.commit()
+    return {"default": None}
+
 
 @router.delete("/conversations/{conversation_id}/messages/{message_index}")
 def delete_message(conversation_id: str, message_index: int, db: Session = Depends(get_db)):

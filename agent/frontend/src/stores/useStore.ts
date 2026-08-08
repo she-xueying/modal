@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { Conversation, Message, MapData, WeatherData } from '../services/api'
+import { Conversation, Message, MapData, WeatherData, DefaultLocation, getDefaultLocation, setDefaultLocation, removeDefaultLocation } from '../services/api'
 
 interface ChatState {
   // Sidebar
@@ -31,6 +31,12 @@ interface ChatState {
   setLoadingConversations: (v: boolean) => void
   setLoadingMessages: (v: boolean) => void
   setStreaming: (v: boolean) => void
+
+  // Default weather location
+  defaultLocation: DefaultLocation | null
+  fetchDefaultLocation: () => Promise<void>
+  setDefaultWeatherLocation: (loc: DefaultLocation) => Promise<void>
+  clearDefaultWeatherLocation: () => Promise<void>
   removeConversation: (id: string) => void
   removeConversations: (ids: string[]) => void
   addConversation: (conv: Conversation) => void
@@ -93,6 +99,24 @@ export const useStore = create<ChatState>((set) => ({
   setLoadingConversations: (v) => set({ loadingConversations: v }),
   setLoadingMessages: (v) => set({ loadingMessages: v }),
   setStreaming: (v) => set({ streaming: v }),
+
+  defaultLocation: null,
+  fetchDefaultLocation: async () => {
+    try {
+      const loc = await getDefaultLocation()
+      set({ defaultLocation: loc })
+    } catch {
+      // ignore network errors
+    }
+  },
+  setDefaultWeatherLocation: async (loc) => {
+    await setDefaultLocation(loc)
+    set({ defaultLocation: loc })
+  },
+  clearDefaultWeatherLocation: async () => {
+    await removeDefaultLocation()
+    set({ defaultLocation: null })
+  },
   removeConversation: (id) =>
     set((s) => ({
       conversations: s.conversations.filter((c) => c.id !== id),

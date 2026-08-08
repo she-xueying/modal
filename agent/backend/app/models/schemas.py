@@ -68,3 +68,11 @@ class ConversationOut(BaseModel):
 class ConversationDetail(ConversationOut):
     """A conversation including all messages."""
     messages: list[MessageOut] = []
+
+
+class DefaultLocation(BaseModel):
+    """User's default weather location."""
+    place: str
+    display_name: str
+    lat: float
+    lon: float

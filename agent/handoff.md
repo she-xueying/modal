@@ -60,7 +60,8 @@
 - 前端 Vite 运行在 **端口 5173**（默认端口，当前无遗留进程）
 - 地图功能**已通过端到端测试**（"北京/上海/杭州在哪里"均验证通过：LLM 调用 map_search → SSE yield map → 前端渲染）
 - 地图数据（MapData）**已持久化**到数据库（`Message.map_data` JSON 字段），刷新页面后可还原
-- **天气功能已集成**：`weather_search` 工具（Open-Meteo，免费无 key），前端天气卡片，`Message.weather_data` 已持久化（刷新可还原）
+- **天气功能已集成**：`weather_search` 工具（Open-Meteo，免费无 key），前端**详细天气面板**（当前详情/24小时/7天预报），`Message.weather_data` 已持久化（刷新可还原）
+- **默认地点（用户可配置）**：`settings` 表 + `GET/PUT/DELETE /api/settings/default-location`，天气卡片可设为默认地点（暂不用于自动兜底）
 - web_search（Tavily）代码与**降级路径已验证**，但需配置**真实 TAVILY_API_KEY** 才能真正联网搜索
 
 ---
@@ -72,7 +73,7 @@
 | 文件 | 说明 |
 |---|---|
 | `backend/app/core/map_service.py` | **新增**：地图服务核心（geocode、timezone、travel_info、map_search） |
-| `backend/app/core/weather_service.py` | **新增**：天气服务核心（Open-Meteo 查询、weather_search、结果格式化） |
+| `backend/app/core/weather_service.py` | **新增**：天气服务核心（Open-Meteo 查询、7天/24小时预报、详情指标、weather_search） |
 | `backend/app/core/search.py` | 工具定义，含 `WEB_SEARCH_TOOL`、`MAP_SEARCH_TOOL`、`WEATHER_SEARCH_TOOL` |
 | `backend/app/services/chat_service.py` | **重写**：流式聊天，支持 map 工具特殊处理（yield dict） |
 | `backend/app/api/chat.py` | SSE 端点 + batch-delete + delete message by index |
@@ -85,7 +86,7 @@
 | 文件 | 说明 |
 |---|---|
 | `frontend/src/components/MapView.tsx` | **新增**：Leaflet 地图组件（国内地图瓦片 + WGS84->GCJ02 转换） |
-| `frontend/src/components/WeatherCard.tsx` | **新增**：天气卡片组件 |
+| `frontend/src/components/WeatherCard.tsx` | **新增**：详细天气面板（当前详情、24小时、7天预报、设为默认地点） |
 | `frontend/src/components/ChatPanel.tsx` | 聊天主面板，含 geolocation、删除、重新生成、地图回调 |
 | `frontend/src/components/MessageBubble.tsx` | 消息气泡，含删除/重新生成按钮、地图渲染 |
 | `frontend/src/components/Sidebar.tsx` | 侧边栏，含批量删除模式 |
@@ -124,6 +125,8 @@
 - [x] 清理遗留的 Vite 进程（当前无残留）
 - [x] 地图数据持久化（`Message.map_data` 字段，刷新后可还原）
 - [x] 天气功能集成（`weather_search` + Open-Meteo + 前端天气卡片 + `weather_data` 持久化，已端到端测试）
+- [x] 详细天气（7天预报 + 24小时逐3小时 + 紫外线/气压/能见度/日出日落）
+- [x] 默认地点设置（settings 表 + API + 前端设为默认地点，用户可配置）
 - [ ] 配置 Tavily API Key 并测试 web_search（降级路径已验证，缺真实 key）
 
 ### Phase 2：图像识别
@@ -231,7 +234,7 @@ Vite 配置了 `/api` 代理到 `http://localhost:8000`，前端通过 `/api/...
 | `conversation` | `id` | 新建对话时返回对话 ID |
 | `message` | `content` | 流式文本块 |
 | `map` | `data`（MapData） | 地图数据（地点、坐标、时间、出行信息） |
-| `weather` | `data`（WeatherData） | 天气数据（地点、当前天气、温度、湿度、风力、今日预报） |
+| `weather` | `data`（WeatherData） | 天气数据（地点、当前天气、7天日预报、24小时预报、详情指标） |
 | `error` | `content` | 错误信息 |
 | `done` | — | 流结束 |
 

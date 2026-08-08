@@ -51,13 +51,30 @@ export interface CurrentWeather {
   weather_code: number | null
   condition: string
   is_day: boolean
+  uv_index: number | null
+  cloud_cover: number | null
+  pressure: number | null
+  visibility: number | null
+  precipitation_probability: number | null
 }
 
 export interface DailyWeather {
+  date?: string
   weather_code: number | null
   condition: string
   temp_max: number | null
   temp_min: number | null
+  precip_prob?: number | null
+  sunrise?: string | null
+  sunset?: string | null
+}
+
+export interface HourlyWeather {
+  time: string | null
+  temperature: number | null
+  weather_code: number | null
+  condition: string
+  precip_prob: number | null
 }
 
 export interface WeatherData {
@@ -66,7 +83,17 @@ export interface WeatherData {
   lat: number
   lon: number
   current: CurrentWeather
-  today: DailyWeather
+  daily: DailyWeather[]
+  hourly: HourlyWeather[]
+  /** Backward compat: old persisted data may have a single-day `today`. */
+  today?: DailyWeather
+}
+
+export interface DefaultLocation {
+  place: string
+  display_name: string
+  lat: number
+  lon: number
 }
 
 export interface Message {
@@ -158,6 +185,33 @@ export async function deleteMessage(conversationId: string, messageIndex: number
     { method: 'DELETE' },
   )
   if (!resp.ok) throw new Error('删除消息失败')
+}
+
+// --------------------------------------------------------------------------- //
+//  Default weather location
+// --------------------------------------------------------------------------- //
+
+export async function getDefaultLocation(): Promise<DefaultLocation | null> {
+  const resp = await fetch(`${API_BASE}/settings/default-location`)
+  if (!resp.ok) throw new Error('获取默认地点失败')
+  const data = await resp.json()
+  return data.default ?? null
+}
+
+export async function setDefaultLocation(loc: DefaultLocation): Promise<void> {
+  const resp = await fetch(`${API_BASE}/settings/default-location`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(loc),
+  })
+  if (!resp.ok) throw new Error('设置默认地点失败')
+}
+
+export async function removeDefaultLocation(): Promise<void> {
+  const resp = await fetch(`${API_BASE}/settings/default-location`, {
+    method: 'DELETE',
+  })
+  if (!resp.ok) throw new Error('清除默认地点失败')
 }
 
 // --------------------------------------------------------------------------- //

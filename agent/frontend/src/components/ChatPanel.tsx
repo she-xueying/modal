@@ -25,6 +25,7 @@ const ChatPanel: React.FC = () => {
     toggleSidebar,
     truncateMessages,
     removeMessage,
+    fetchDefaultLocation,
   } = useStore()
 
   const [input, setInput] = React.useState('')
@@ -34,6 +35,11 @@ const ChatPanel: React.FC = () => {
   const userLocationRef = React.useRef<{ lat: number; lon: number } | null>(null)
 
   // Get user geolocation on mount (for map travel time)
+  // Load saved default weather location on mount
+  React.useEffect(() => {
+    fetchDefaultLocation()
+  }, [fetchDefaultLocation])
+
   React.useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(

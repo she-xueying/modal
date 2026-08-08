@@ -88,6 +88,15 @@ class Message(Base):
     conversation = relationship("Conversation", back_populates="messages")
 
 
+class Setting(Base):
+    """Simple key-value settings store (e.g. default weather location)."""
+
+    __tablename__ = "settings"
+
+    key = Column(String(64), primary_key=True)
+    value = Column(Text, nullable=False, default="")
+
+
 def _ensure_columns() -> None:
     """Add missing columns to existing tables (lightweight dev migration)."""
     from sqlalchemy import inspect, text
