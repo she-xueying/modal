@@ -25,3 +25,6 @@ node_modules/.tmp/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Uploaded/generated files
+backend/data/uploads/

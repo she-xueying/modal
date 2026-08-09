@@ -219,6 +219,7 @@ html, body, #root {
 .chat-input {
   flex: 1;
   padding-right: 56px !important;
+  padding-left: 36px !important;
 }
 
 .chat-send-btn {
@@ -794,4 +795,89 @@ html, body, #root {
   padding: 1px 6px;
   display: inline-flex;
   align-items: center;
+}
+
+/* ---- File upload / file card ---- */
+.chat-file-icon {
+  position: absolute;
+  left: 12px;
+  bottom: 16px;
+  z-index: 10;
+  font-size: 18px;
+  color: #999;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.chat-file-icon:hover {
+  color: var(--primary-color);
+}
+
+.chat-attachment {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f5f7fa;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 6px 12px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  max-width: 360px;
+}
+
+.chat-attachment-icon { font-size: 16px; }
+.chat-attachment-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #333;
+}
+.chat-attachment-status { color: #999; font-size: 12px; }
+.chat-attachment-remove {
+  cursor: pointer;
+  color: #999;
+  font-size: 12px;
+  display: inline-flex;
+}
+.chat-attachment-remove:hover { color: #ff4d4f; }
+
+.file-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 6px;
+  max-width: 420px;
+}
+.file-card.user { background: #f0f7ff; }
+.file-card-icon { font-size: 22px; }
+.file-card-info { flex: 1; min-width: 0; }
+.file-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-card-desc { font-size: 11px; color: #999; margin-top: 2px; }
+.file-card-download {
+  flex-shrink: 0;
+  font-size: 13px;
+  color: #1677ff;
+  cursor: pointer;
+  text-decoration: none;
+  padding: 4px 12px;
+  border: 1px solid #1677ff;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+.file-card-download:hover {
+  background: #1677ff;
+  color: #fff;
 }

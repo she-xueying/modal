@@ -96,6 +96,12 @@ export interface DefaultLocation {
   lon: number
 }
 
+export interface FileData {
+  id: string
+  filename: string
+  url: string
+}
+
 export interface Message {
   id?: string
   role: 'user' | 'assistant' | 'system'
@@ -105,6 +111,8 @@ export interface Message {
   map_data?: MapData | string | null
   weatherData?: WeatherData
   weather_data?: WeatherData | string | null
+  fileData?: FileData
+  file_data?: FileData | string | null
 }
 
 // --------------------------------------------------------------------------- //
@@ -132,6 +140,10 @@ export async function getConversation(id: string): Promise<ConversationDetail> {
         typeof m.weather_data === 'string'
           ? JSON.parse(m.weather_data)
           : m.weather_data
+    }
+    if (m.file_data) {
+      m.fileData =
+        typeof m.file_data === 'string' ? JSON.parse(m.file_data) : m.file_data
     }
     return m
   })
@@ -215,6 +227,25 @@ export async function removeDefaultLocation(): Promise<void> {
 }
 
 // --------------------------------------------------------------------------- //
+//  File upload / download
+// --------------------------------------------------------------------------- //
+
+export async function uploadFile(file: File): Promise<FileData> {
+  const form = new FormData()
+  form.append('file', file)
+  const resp = await fetch(`${API_BASE}/files/upload`, {
+    method: 'POST',
+    body: form,
+  })
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => null)
+    throw new Error(err?.detail || '上传文件失败')
+  }
+  const data = await resp.json()
+  return { id: data.id, filename: data.filename, url: `${API_BASE}/files/${data.id}/download` }
+}
+
+// --------------------------------------------------------------------------- //
 //  Streaming Chat (SSE)
 // --------------------------------------------------------------------------- //
 
@@ -223,6 +254,7 @@ export interface ChatStreamCallbacks {
   onMessage: (chunk: string) => void
   onMap?: (data: MapData) => void
   onWeather?: (data: WeatherData) => void
+  onFile?: (data: FileData) => void
   onError?: (error: string) => void
   onDone?: () => void
 }
@@ -234,6 +266,7 @@ export async function streamChat(
   signal?: AbortSignal,
   userLat?: number,
   userLon?: number,
+  fileId?: string | null,
 ): Promise<void> {
   const body: Record<string, any> = {
     conversation_id: conversationId,
@@ -242,6 +275,9 @@ export async function streamChat(
   if (userLat != null && userLon != null) {
     body.user_lat = userLat
     body.user_lon = userLon
+  }
+  if (fileId) {
+    body.file_id = fileId
   }
 
   const resp = await fetch(`${API_BASE}/chat`, {
@@ -289,6 +325,9 @@ export async function streamChat(
             break
           case 'weather':
             callbacks.onWeather?.(data.data)
+            break
+          case 'file':
+            callbacks.onFile?.(data.data)
             break
           case 'error':
             callbacks.onError?.(data.content)

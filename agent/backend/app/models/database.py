@@ -83,6 +83,7 @@ class Message(Base):
     content = Column(Text, nullable=False, default="")
     map_data = Column(Text, nullable=True)  # JSON-encoded MapData (assistant)
     weather_data = Column(Text, nullable=True)  # JSON-encoded weather (assistant)
+    file_data = Column(Text, nullable=True)  # JSON-encoded file info (assistant, e.g. modified docx)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
 
     conversation = relationship("Conversation", back_populates="messages")
@@ -97,13 +98,26 @@ class Setting(Base):
     value = Column(Text, nullable=False, default="")
 
 
+class File(Base):
+    """An uploaded or generated file (e.g. docx)."""
+
+    __tablename__ = "files"
+
+    id = Column(String(32), primary_key=True, default=_uuid)
+    filename = Column(String(255), nullable=False)
+    path = Column(String(500), nullable=False)
+    original_id = Column(String(32), nullable=True)  # source file id for generated files
+    role = Column(String(20), nullable=False, default="upload")  # upload | generated
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+
+
 def _ensure_columns() -> None:
     """Add missing columns to existing tables (lightweight dev migration)."""
     from sqlalchemy import inspect, text
     inspector = inspect(engine)
     if "messages" in inspector.get_table_names():
         cols = {c["name"] for c in inspector.get_columns("messages")}
-        for col in ("map_data", "weather_data"):
+        for col in ("map_data", "weather_data", "file_data"):
             if col not in cols:
                 with engine.begin() as conn:
                     conn.execute(text(f"ALTER TABLE messages ADD COLUMN {col} TEXT"))

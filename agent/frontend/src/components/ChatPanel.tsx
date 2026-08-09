@@ -1,8 +1,8 @@
 import React from 'react'
 import { Input, Button, message } from 'antd'
-import { ArrowUpOutlined, RobotOutlined, MenuFoldOutlined, MenuUnfoldOutlined, StopOutlined } from '@ant-design/icons'
+import { ArrowUpOutlined, RobotOutlined, MenuFoldOutlined, MenuUnfoldOutlined, StopOutlined, PaperClipOutlined, CloseOutlined } from '@ant-design/icons'
 import { useStore } from '../stores/useStore'
-import { streamChat, getConversation, truncateConversation, deleteMessage as deleteMessageApi, Message as ApiMessage } from '../services/api'
+import { streamChat, getConversation, truncateConversation, deleteMessage as deleteMessageApi, Message as ApiMessage, uploadFile, FileData } from '../services/api'
 import MessageBubble from './MessageBubble'
 
 const { TextArea } = Input
@@ -17,6 +17,7 @@ const ChatPanel: React.FC = () => {
     updateLastAssistantMessage,
     setLastAssistantMapData,
     setLastAssistantWeatherData,
+    setLastAssistantFileData,
     setActiveConversation,
     setStreaming,
     addConversation,
@@ -33,6 +34,9 @@ const ChatPanel: React.FC = () => {
   const inputRef = React.useRef<any>(null)
   const abortControllerRef = React.useRef<AbortController | null>(null)
   const userLocationRef = React.useRef<{ lat: number; lon: number } | null>(null)
+  const [attachedFile, setAttachedFile] = React.useState<FileData | null>(null)
+  const [uploadingFile, setUploadingFile] = React.useState(false)
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
 
   // Get user geolocation on mount (for map travel time)
   // Load saved default weather location on mount
@@ -78,9 +82,33 @@ const ChatPanel: React.FC = () => {
     }
   }
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    if (!file.name.toLowerCase().endsWith('.docx')) {
+      message.error('仅支持 .docx 文件')
+      return
+    }
+    setUploadingFile(true)
+    try {
+      const data = await uploadFile(file)
+      setAttachedFile(data)
+      message.success(`已上传：${data.filename}`)
+    } catch (err: any) {
+      message.error(err?.message || '上传文件失败')
+    } finally {
+      setUploadingFile(false)
+    }
+  }
+
   const sendMessage = async (text: string, convId: string | null) => {
+    const fileRef = attachedFile
     // Add user message to UI immediately
     const userMsg: ApiMessage = { role: 'user', content: text }
+    if (fileRef) {
+      userMsg.fileData = fileRef
+    }
     addMessage(userMsg)
 
     // Add empty assistant message for streaming
@@ -119,6 +147,9 @@ const ChatPanel: React.FC = () => {
         onWeather: (data) => {
           setLastAssistantWeatherData(data)
         },
+        onFile: (data) => {
+          setLastAssistantFileData(data)
+        },
         onError: (err) => {
           updateLastAssistantMessage(`[错误] ${err}`)
           message.error('生成回复时出错')
@@ -126,7 +157,7 @@ const ChatPanel: React.FC = () => {
         onDone: () => {
           setStreaming(false)
         },
-      }, controller.signal, userLoc?.lat, userLoc?.lon)
+      }, controller.signal, userLoc?.lat, userLoc?.lon, fileRef?.id)
     } catch (e: any) {
       if (e.name === 'AbortError') {
         // User stopped - keep partial response
@@ -149,6 +180,9 @@ const ChatPanel: React.FC = () => {
     if (!text || streaming) return
     setInput('')
     await sendMessage(text, activeConversationId)
+    if (attachedFile) {
+      setAttachedFile(null)
+    }
   }
 
   const handleStop = () => {
@@ -263,6 +297,11 @@ const ChatPanel: React.FC = () => {
           streaming={streaming}
           onStop={handleStop}
           inputRef={inputRef}
+          fileInputRef={fileInputRef}
+          onFileChange={handleFileSelect}
+          attachedFile={attachedFile}
+          uploadingFile={uploadingFile}
+          onRemoveFile={() => setAttachedFile(null)}
         />
       </div>
     )
@@ -286,6 +325,7 @@ const ChatPanel: React.FC = () => {
             index={idx}
             mapData={msg.mapData}
             weatherData={msg.weatherData}
+            fileData={msg.fileData}
             onEdit={handleEdit}
             onDelete={handleDelete}
             onRegenerate={handleRegenerate}
@@ -301,6 +341,11 @@ const ChatPanel: React.FC = () => {
         streaming={streaming}
         onStop={handleStop}
         inputRef={inputRef}
+        fileInputRef={fileInputRef}
+        onFileChange={handleFileSelect}
+        attachedFile={attachedFile}
+        uploadingFile={uploadingFile}
+        onRemoveFile={() => setAttachedFile(null)}
       />
     </div>
   )
@@ -316,6 +361,11 @@ interface ChatInputProps {
   streaming: boolean
   onStop: () => void
   inputRef: React.RefObject<any>
+  fileInputRef: React.RefObject<HTMLInputElement>
+  onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void
+  attachedFile: FileData | null
+  uploadingFile: boolean
+  onRemoveFile: () => void
 }
 
 const ChatInput: React.FC<ChatInputProps> = ({
@@ -326,9 +376,39 @@ const ChatInput: React.FC<ChatInputProps> = ({
   streaming,
   onStop,
   inputRef,
+  fileInputRef,
+  onFileChange,
+  attachedFile,
+  uploadingFile,
+  onRemoveFile,
 }) => (
   <div className="chat-input-area">
+    {attachedFile && (
+      <div className="chat-attachment">
+        <span className="chat-attachment-icon">📄</span>
+        <span className="chat-attachment-name">{attachedFile.filename}</span>
+        {uploadingFile ? (
+          <span className="chat-attachment-status">上传中…</span>
+        ) : (
+          <span className="chat-attachment-remove" onClick={onRemoveFile} title="移除文件">
+            <CloseOutlined />
+          </span>
+        )}
+      </div>
+    )}
     <div className="chat-input-wrapper">
+      <PaperClipOutlined
+        className="chat-file-icon"
+        onClick={() => fileInputRef.current?.click()}
+        title="选择文件（docx）"
+      />
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".docx"
+        style={{ display: 'none' }}
+        onChange={onFileChange}
+      />
       <TextArea
         ref={inputRef}
         className="chat-input"

@@ -89,3 +89,53 @@
 - frontend/src/components/ChatPanel.tsx：挂载时请求定位并加载默认地点；处理 weather 流式回调
 - frontend/src/components/MessageBubble.tsx：渲染天气卡片
 - frontend/src/styles/global.css：新增天气面板样式
+
+
+---
+
+## 文档编辑功能（docx）
+
+> 简介：用户上传 docx 文档，对话式让助手修改文档某处，返回修改后的文档供下载（原文件不动）。
+> 前端在输入框左下角提供"选择文件"图标。
+
+### 开发流程
+
+- 输入框左下角"选择文件"图标 → 选择 .docx → 后端存盘并返回文件ID
+- 发送消息时带上 file_id，后端把文档内容（带段落索引）注入 LLM 上下文
+- LLM 通过 docx_edit 工具指定要改的段落索引和新内容
+- 后端用 python-docx 在副本上应用修改（保留原段落样式），生成新文件
+- SSE 推送 file 事件 → 前端消息卡片显示"下载修改后的文档"
+- 原文档从未被改动
+
+### 遇到的问题
+
+1. FastAPI 文件上传缺少 python-multipart
+   - 现象：导入 app 报 Form data requires python-multipart
+   - 原因：新 venv 未安装该依赖（requirements.txt 有但未装）
+   - 解决：pip install python-multipart
+   - 教训：装依赖要覆盖 requirements 全部，不能只装核心
+
+2. 前端补丁脚本未写入（heredoc 截断）
+   - 现象：api.ts / useStore.ts 补丁打印 OK 但文件未变，构建报缺 FileData / uploadFile
+   - 原因：PowerShell here-string 内容被截断，脚本末尾写文件语句未执行
+   - 解决：重写补丁并校验文件末尾完整（加 WRITE DONE 标记 + 写入后 grep 验证）
+   - 教训：脚本改文件后要立即校验目标文件内容
+
+3. Vite 开发服务器意外退出
+   - 现象：连接 localhost:5173 被拒（WinError 10061）
+   - 解决：重新启动 npm run dev
+   - 教训：长会话中 dev server 可能退出，测试前先确认端口监听
+
+### 修改的文件
+
+- backend/app/core/file_service.py：新增，docx 上传保存、段落提取、副本修改（python-docx）
+- backend/app/models/database.py：新增 files 表；Message 增加 file_data 字段
+- backend/app/api/chat.py：新增 /api/files/upload 与 /api/files/{id}/download
+- backend/app/core/search.py：新增 docx_edit 工具定义
+- backend/app/services/chat_service.py：注入文档内容、处理 docx_edit、持久化 file_data
+- backend/requirements.txt：新增 python-docx；补装 python-multipart
+- frontend/src/components/ChatPanel.tsx：输入框左下角上传图标、附件、onFile 回调
+- frontend/src/components/MessageBubble.tsx：文件卡片（上传附件 + 下载按钮）
+- frontend/src/services/api.ts：FileData 类型、uploadFile、file 事件
+- frontend/src/stores/useStore.ts：setLastAssistantFileData
+- frontend/src/styles/global.css：上传图标/附件/文件卡片样式

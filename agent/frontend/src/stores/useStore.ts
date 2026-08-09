@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { Conversation, Message, MapData, WeatherData, DefaultLocation, getDefaultLocation, setDefaultLocation, removeDefaultLocation } from '../services/api'
+import { Conversation, Message, MapData, WeatherData, FileData, DefaultLocation, getDefaultLocation, setDefaultLocation, removeDefaultLocation } from '../services/api'
 
 interface ChatState {
   // Sidebar
@@ -26,6 +26,7 @@ interface ChatState {
   updateLastAssistantMessage: (content: string) => void
   setLastAssistantMapData: (data: MapData) => void
   setLastAssistantWeatherData: (data: WeatherData) => void
+  setLastAssistantFileData: (data: FileData) => void
   truncateMessages: (upToIndex: number) => void
   updateMessage: (index: number, content: string) => void
   setLoadingConversations: (v: boolean) => void
@@ -83,6 +84,15 @@ export const useStore = create<ChatState>((set) => ({
       const lastIdx = msgs.length - 1
       if (lastIdx >= 0 && msgs[lastIdx].role === 'assistant') {
         msgs[lastIdx] = { ...msgs[lastIdx], weatherData: data }
+      }
+      return { messages: msgs }
+    }),
+  setLastAssistantFileData: (data) =>
+    set((s) => {
+      const msgs = [...s.messages]
+      const lastIdx = msgs.length - 1
+      if (lastIdx >= 0 && msgs[lastIdx].role === 'assistant') {
+        msgs[lastIdx] = { ...msgs[lastIdx], fileData: data }
       }
       return { messages: msgs }
     }),

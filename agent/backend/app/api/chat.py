@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import json
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File as FastFile
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.models.database import Conversation, Message, get_db
-from app.models.database import Setting
+from app.core.file_service import FileError, create_file_record, save_docx_upload
+from app.models.database import Conversation, File as FileRecord, Message, Setting, get_db
 from app.models.schemas import (
     ChatRequest,
     ConversationCreate,
@@ -55,6 +55,7 @@ async def chat(req: ChatRequest, db: Session = Depends(get_db)):
                 db, conv, req.message,
                 user_lat=req.user_lat,
                 user_lon=req.user_lon,
+                file_id=req.file_id,
             ):
                 if isinstance(chunk, dict):
                     # Map data or other structured event - send directly
@@ -197,6 +198,42 @@ def batch_delete_conversations(req: BatchDeleteRequest, db: Session = Depends(ge
 # --------------------------------------------------------------------------- #
 #  Delete a single message
 # --------------------------------------------------------------------------- #
+
+# --------------------------------------------------------------------------- #
+#  File upload / download (docx)
+# --------------------------------------------------------------------------- #
+
+@router.post("/files/upload")
+async def upload_docx(file: UploadFile = FastFile(...), db: Session = Depends(get_db)):
+    """Upload a .docx file; returns {id, filename}."""
+    filename = (file.filename or "").strip()
+    if not filename.lower().endswith(".docx"):
+        raise HTTPException(status_code=400, detail="仅支持 .docx 文件")
+    content = await file.read()
+    try:
+        data = save_docx_upload(content, filename or "document.docx")
+    except FileError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    rec = create_file_record(db, **data)
+    return {"id": rec.id, "filename": rec.filename}
+
+
+@router.get("/files/{file_id}/download")
+def download_file(file_id: str, db: Session = Depends(get_db)):
+    """Download an uploaded or generated file."""
+    rec = db.get(FileRecord, file_id)
+    if rec is None:
+        raise HTTPException(status_code=404, detail="文件不存在")
+    from pathlib import Path
+    path = Path(rec.path)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="文件不存在")
+    return FileResponse(
+        path,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        filename=rec.filename,
+    )
+
 
 # --------------------------------------------------------------------------- #
 #  Default weather location (user-configurable)

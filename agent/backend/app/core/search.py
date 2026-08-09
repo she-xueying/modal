@@ -132,7 +132,38 @@ WEATHER_SEARCH_TOOL = {
     },
 }
 
-ALL_TOOLS = [WEB_SEARCH_TOOL, MAP_SEARCH_TOOL, WEATHER_SEARCH_TOOL]
+DOCX_EDIT_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "docx_edit",
+        "description": (
+            "当用户上传了 .docx 文档并要求修改文档中的某处内容时，调用此工具修改文档。"
+            "文档内容已在上文以[段落索引]形式给出（文件ID也会给出）。"
+            "用户要求改哪一段，就在 paragraph_index 填对应索引，new_text 填修改后的完整段落内容（会替换整段）。"
+            "修改后系统会生成一个新的文档供用户下载，原文档不会被改动。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "file_id": {
+                    "type": "string",
+                    "description": "用户上传文档的文件ID（上文已给出）",
+                },
+                "paragraph_index": {
+                    "type": "integer",
+                    "description": "要修改的段落索引，从0开始，对应上文[索引]",
+                },
+                "new_text": {
+                    "type": "string",
+                    "description": "修改后该段落的完整新内容",
+                },
+            },
+            "required": ["file_id", "paragraph_index", "new_text"],
+        },
+    },
+}
+
+ALL_TOOLS = [WEB_SEARCH_TOOL, MAP_SEARCH_TOOL, WEATHER_SEARCH_TOOL, DOCX_EDIT_TOOL]
 
 
 # Map tool names to their async executor functions

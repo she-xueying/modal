@@ -5,7 +5,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { RobotOutlined, UserOutlined, CopyOutlined, EditOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons'
 import { message as antdMessage, Input, Popconfirm } from 'antd'
-import { MapData, WeatherData } from '../services/api'
+import { MapData, WeatherData, FileData } from '../services/api'
 import MapView from './MapView'
 import WeatherCard from './WeatherCard'
 
@@ -18,12 +18,13 @@ interface MessageBubbleProps {
   index?: number
   mapData?: MapData
   weatherData?: WeatherData
+  fileData?: FileData
   onEdit?: (index: number, newContent: string) => void
   onDelete?: (index: number) => void
   onRegenerate?: (index: number) => void
 }
 
-const MessageBubble: React.FC<MessageBubbleProps> = ({ role, content, streaming, index, mapData, weatherData, onEdit, onDelete, onRegenerate }) => {
+const MessageBubble: React.FC<MessageBubbleProps> = ({ role, content, streaming, index, mapData, weatherData, fileData, onEdit, onDelete, onRegenerate }) => {
   const isUser = role === 'user'
   const [editing, setEditing] = React.useState(false)
   const [editValue, setEditValue] = React.useState(content)
@@ -98,6 +99,20 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ role, content, streaming,
           <>
             {mapData && <MapView data={mapData} />}
             {weatherData && <WeatherCard data={weatherData} />}
+            {fileData && (
+              <div className={`file-card${isUser ? ' user' : ''}`}>
+                <span className="file-card-icon">📄</span>
+                <div className="file-card-info">
+                  <div className="file-card-name">{fileData.filename}</div>
+                  <div className="file-card-desc">
+                    {isUser ? '已上传文档' : '修改后的文档，可下载'}
+                  </div>
+                </div>
+                <a className="file-card-download" href={fileData.url} download>
+                  下载
+                </a>
+              </div>
+            )}
             <div className={`message-bubble ${isUser ? 'user' : 'assistant'}`}>
               {isUser ? (
                 <span>{content}</span>

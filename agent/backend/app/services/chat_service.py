@@ -26,6 +26,13 @@ from app.core.prompts import SYSTEM_PROMPT
 from app.core.search import ALL_TOOLS, TOOL_EXECUTORS, SearchError
 from app.core.map_service import map_search, map_result_to_text
 from app.core.weather_service import weather_search, weather_result_to_text
+from app.core.file_service import (
+    FileError,
+    apply_docx_edit,
+    create_file_record,
+    get_file_record,
+    paragraph_indexed_text,
+)
 from app.models.database import Conversation, Message, Setting
 
 DEFAULT_LOCATION_KEY = "default_weather_location"
@@ -88,6 +95,7 @@ def save_message(
     content: str,
     map_data: dict | None = None,
     weather_data: dict | None = None,
+    file_data: dict | None = None,
 ) -> Message:
     """Persist a message and update conversation timestamp."""
     msg = Message(conversation_id=conv.id, role=role, content=content)
@@ -95,6 +103,8 @@ def save_message(
         msg.map_data = json.dumps(map_data, ensure_ascii=False)
     if weather_data is not None:
         msg.weather_data = json.dumps(weather_data, ensure_ascii=False)
+    if file_data is not None:
+        msg.file_data = json.dumps(file_data, ensure_ascii=False)
     db.add(msg)
     conv.updated_at = datetime.now(timezone.utc)
     db.commit()
@@ -108,6 +118,7 @@ async def chat_stream(
     user_message: str,
     user_lat: float | None = None,
     user_lon: float | None = None,
+    file_id: str | None = None,
 ) -> AsyncGenerator[Any, None]:
     """Process a user message and yield response chunks (streaming).
 
@@ -117,12 +128,29 @@ async def chat_stream(
     """
     # 1. Build context
     messages = load_history(db, conv)
-    messages.append({"role": "user", "content": user_message})
+    user_content = user_message
+    if file_id:
+        file_rec = get_file_record(db, file_id)
+        if file_rec is not None:
+            from pathlib import Path
+            if Path(file_rec.path).exists():
+                doc_text = paragraph_indexed_text(file_rec.path)
+                user_content = (
+                    f"（用户上传了文档：{file_rec.filename}，文件ID：{file_rec.id}。\n"
+                    f"文档内容如下，[索引] 为段落编号，如要修改请调用 docx_edit 工具并填对应 paragraph_index：）\n"
+                    f"{doc_text}\n\n用户的修改要求：{user_message}"
+                )
+            else:
+                user_content = user_message + "（注意：上传的文档文件读取失败）"
+        else:
+            user_content = user_message + "（注意：未找到上传的文档）"
+    messages.append({"role": "user", "content": user_content})
 
     # 2. Non-streaming call with tools to check if search/map is needed
     full_response = ""
     saved_map_data: dict | None = None
     saved_weather_data: dict | None = None
+    saved_file_data: dict | None = None
     try:
         resp = await llm_client.chat_with_tools(
             messages=messages,
@@ -192,6 +220,37 @@ async def chat_stream(
                 except Exception as e:
                     tool_result = f"天气查询失败: {e}"
 
+            # Handle docx_edit tool specially (creates a modified file for download)
+            elif fn_name == "docx_edit":
+                fid = str(fn_args.get("file_id", "") or "")
+                try:
+                    para_idx = int(fn_args.get("paragraph_index", -1))
+                except (TypeError, ValueError):
+                    para_idx = -1
+                new_text = str(fn_args.get("new_text", "") or "")
+                try:
+                    src = get_file_record(db, fid)
+                    if src is None:
+                        raise FileError("找不到要修改的文件")
+                    from pathlib import Path
+                    if not Path(src.path).exists():
+                        raise FileError("文件不存在")
+                    new_data = apply_docx_edit(src.path, para_idx, new_text, src.filename)
+                    new_rec = create_file_record(db, original_id=src.id, **new_data)
+                    saved_file_data = {
+                        "id": new_rec.id,
+                        "filename": new_rec.filename,
+                        "url": f"/api/files/{new_rec.id}/download",
+                    }
+                    # Yield file data to frontend for a download card
+                    yield {"type": "file", "data": saved_file_data}
+                    tool_result = (
+                        f"文档修改成功，已生成修改后的文档：{new_rec.filename}"
+                        f"（文件ID：{new_rec.id}）"
+                    )
+                except Exception as e:
+                    tool_result = f"文档修改失败: {e}"
+
             # Handle web_search and other tools
             elif fn_name in TOOL_EXECUTORS:
                 executor = TOOL_EXECUTORS[fn_name]
@@ -233,10 +292,16 @@ async def chat_stream(
             except LLMError as e:
                 yield f"[错误] 生成回复失败: {e}"
 
-    # 5. Persist the assistant response (save even if only map/weather data)
-    if full_response.strip() or saved_map_data is not None or saved_weather_data is not None:
+    # 5. Persist the assistant response (save even if only map/weather/file data)
+    if (
+        full_response.strip()
+        or saved_map_data is not None
+        or saved_weather_data is not None
+        or saved_file_data is not None
+    ):
         save_message(
             db, conv, "assistant", full_response,
             map_data=saved_map_data,
             weather_data=saved_weather_data,
+            file_data=saved_file_data,
         )

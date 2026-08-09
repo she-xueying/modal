@@ -12,6 +12,7 @@
 - 流式对话（SSE 流式输出）
 - 联网搜索（Tavily）
 - 地图查询（地点定位、当前时间、出行时长）
+- 文档编辑（上传 docx、对话式修改、下载修改后文档）
 - 图像识别
 - 周报生成
 - 文档总结
@@ -30,6 +31,7 @@
 | 地图后端 | Nominatim（地理编码）、timezonefinder（离线时区）、OSRM（路径规划） |
 | 前端 | React 18、TypeScript、Vite、Ant Design、Zustand、react-markdown |
 | 地图前端 | Leaflet + react-leaflet@4 |
+| 文档编辑 | python-docx（docx 解析与修改）、python-multipart（文件上传） |
 
 ---
 
@@ -43,6 +45,7 @@
    - `web_search`（Tavily）— 代码完成，**降级路径已验证**（Tavily API Key 未配置真实 key）
    - `map_search`（Nominatim + timezonefinder + OSRM）— 代码完成，**已端到端测试**
    - `weather_search`（Open-Meteo）— **已集成并测试**（按地点/按用户位置，前端天气卡片）
+     - `docx_edit`（python-docx）— **已集成并测试**（上传 docx、对话式修改、下载修改后文档）
 4. **地图功能**：当用户询问某地点时，前端展示 Leaflet 地图，显示地点坐标、当前当地时间、星期、以及不同交通工具（驾车/步行/骑行/飞行）的耗时
 5. **消息操作**：
    - 用户消息右下侧：删除按钮（带 Popconfirm 确认）
@@ -63,6 +66,7 @@
 - **天气功能已集成**：`weather_search` 工具（Open-Meteo，免费无 key），前端**详细天气面板**（当前详情/24小时/7天预报），`Message.weather_data` 已持久化（刷新可还原）
 - **默认地点（用户可配置）**：`settings` 表 + `GET/PUT/DELETE /api/settings/default-location`，天气卡片可设为默认地点，已接入兜底（无地点且无定位时按默认地点查询）
 - **地点引导流程**：无地点/无定位/无默认时，模型主动询问用户城市；定位授权后按定位查询（前端 navigator.geolocation 传 user_lat/user_lon）
+- **文档编辑功能已集成**：上传 docx → 对话式修改 → 生成修改后文档供下载（`Message.file_data` 已持久化，刷新可还原）
 - web_search（Tavily）代码与**降级路径已验证**，但需配置**真实 TAVILY_API_KEY** 才能真正联网搜索
 
 ---
@@ -75,9 +79,10 @@
 |---|---|
 | `backend/app/core/map_service.py` | **新增**：地图服务核心（geocode、timezone、travel_info、map_search） |
 | `backend/app/core/weather_service.py` | **新增**：天气服务核心（Open-Meteo 查询、7天/24小时预报、详情指标、weather_search） |
-| `backend/app/core/search.py` | 工具定义，含 `WEB_SEARCH_TOOL`、`MAP_SEARCH_TOOL`、`WEATHER_SEARCH_TOOL` |
+| `backend/app/core/search.py` | 工具定义，含 `WEB_SEARCH_TOOL`、`MAP_SEARCH_TOOL`、`WEATHER_SEARCH_TOOL`、`DOCX_EDIT_TOOL` |
+| `backend/app/core/file_service.py` | **新增**：docx 上传保存、段落提取、副本修改（python-docx） |
 | `backend/app/services/chat_service.py` | **重写**：流式聊天，支持 map 工具特殊处理（yield dict） |
-| `backend/app/api/chat.py` | SSE 端点 + batch-delete + delete message by index |
+| `backend/app/api/chat.py` | SSE 端点 + CRUD + 文件上传/下载 + 默认地点 + delete message by index |
 | `backend/app/models/schemas.py` | `ChatRequest` 增加 `user_lat`/`user_lon` |
 | `backend/app/core/prompts.py` | 系统提示词增加地图能力说明（第 3 项） |
 | `backend/.env` | 环境变量（ARK API Key 等） |
@@ -236,6 +241,7 @@ Vite 配置了 `/api` 代理到 `http://localhost:8000`，前端通过 `/api/...
 | `message` | `content` | 流式文本块 |
 | `map` | `data`（MapData） | 地图数据（地点、坐标、时间、出行信息） |
 | `weather` | `data`（WeatherData） | 天气数据（地点、当前天气、7天日预报、24小时预报、详情指标） |
+| `file` | `data`（FileData） | 生成的文件（docx 编辑结果，含下载 URL） |
 | `error` | `content` | 错误信息 |
 | `done` | — | 流结束 |
 
