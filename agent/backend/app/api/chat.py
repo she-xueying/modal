@@ -40,8 +40,17 @@ async def chat(req: ChatRequest, db: Session = Depends(get_db)):
     # 1. Get or create conversation
     conv = get_or_create_conversation(db, req.conversation_id, req.message)
 
-    # 2. Persist the user message
-    save_message(db, conv, "user", req.message)
+    # 2. Persist the user message (with uploaded file reference if any)
+    user_file_data = None
+    if req.file_id:
+        file_rec = db.get(FileRecord, req.file_id)
+        if file_rec is not None:
+            user_file_data = {
+                "id": file_rec.id,
+                "filename": file_rec.filename,
+                "url": f"/api/files/{file_rec.id}/download",
+            }
+    save_message(db, conv, "user", req.message, file_data=user_file_data)
 
     # 3. Stream the assistant response
     conversation_id = conv.id
