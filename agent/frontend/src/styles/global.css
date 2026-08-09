@@ -219,6 +219,8 @@ html, body, #root {
 .chat-input {
   flex: 1;
   padding-right: 56px !important;
+  /* keep last line of text above the bottom-left/right buttons */
+  padding-bottom: 46px !important;
 }
 
 .chat-send-btn {
@@ -797,15 +799,11 @@ html, body, #root {
 }
 
 /* ---- File upload / file card ---- */
-.chat-input-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 8px;
-  padding: 0 4px;
-}
-
 .chat-file-icon {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 10;
   font-size: 18px;
   color: #999;
   cursor: pointer;
@@ -815,11 +813,6 @@ html, body, #root {
 
 .chat-file-icon:hover {
   color: var(--primary-color);
-}
-
-.chat-file-hint {
-  font-size: 12px;
-  color: #bbb;
 }
 
 .chat-attachment {

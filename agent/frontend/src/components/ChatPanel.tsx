@@ -397,6 +397,11 @@ const ChatInput: React.FC<ChatInputProps> = ({
       </div>
     )}
     <div className="chat-input-wrapper">
+      <PaperClipOutlined
+        className="chat-file-icon"
+        onClick={() => fileInputRef.current?.click()}
+        title="选择文件（docx）"
+      />
       <input
         ref={fileInputRef}
         type="file"
@@ -432,14 +437,6 @@ const ChatInput: React.FC<ChatInputProps> = ({
           shape="circle"
         />
       )}
-    </div>
-    <div className="chat-input-toolbar">
-      <PaperClipOutlined
-        className="chat-file-icon"
-        onClick={() => fileInputRef.current?.click()}
-        title="选择文件（docx）"
-      />
-      <span className="chat-file-hint">支持上传 docx 文档，让助手修改后下载</span>
     </div>
   </div>
 )
