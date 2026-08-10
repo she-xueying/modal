@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.file_service import FileError, create_file_record, save_docx_upload
+from app.core.file_service import FileError, create_file_record, save_docx_upload, save_image_upload
 from app.models.database import Conversation, File as FileRecord, Message, Setting, get_db
 from app.models.schemas import (
     ChatRequest,
@@ -40,7 +40,7 @@ async def chat(req: ChatRequest, db: Session = Depends(get_db)):
     # 1. Get or create conversation
     conv = get_or_create_conversation(db, req.conversation_id, req.message)
 
-    # 2. Persist the user message (with uploaded file reference if any)
+    # 2. Persist the user message (with uploaded file/image reference if any)
     user_file_data = None
     if req.file_id:
         file_rec = db.get(FileRecord, req.file_id)
@@ -50,7 +50,20 @@ async def chat(req: ChatRequest, db: Session = Depends(get_db)):
                 "filename": file_rec.filename,
                 "url": f"/api/files/{file_rec.id}/download",
             }
-    save_message(db, conv, "user", req.message, file_data=user_file_data)
+    user_image_data = None
+    if req.image_id:
+        img_rec = db.get(FileRecord, req.image_id)
+        if img_rec is not None:
+            user_image_data = {
+                "id": img_rec.id,
+                "filename": img_rec.filename,
+                "url": f"/api/files/{img_rec.id}/view",
+            }
+    save_message(
+        db, conv, "user", req.message,
+        file_data=user_file_data,
+        image_data=user_image_data,
+    )
 
     # 3. Stream the assistant response
     conversation_id = conv.id
@@ -65,6 +78,7 @@ async def chat(req: ChatRequest, db: Session = Depends(get_db)):
                 user_lat=req.user_lat,
                 user_lon=req.user_lon,
                 file_id=req.file_id,
+                image_id=req.image_id,
             ):
                 if isinstance(chunk, dict):
                     # Map data or other structured event - send directly
@@ -242,6 +256,38 @@ def download_file(file_id: str, db: Session = Depends(get_db)):
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         filename=rec.filename,
     )
+
+
+# --------------------------------------------------------------------------- #
+#  Image upload / view (for vision / OCR)
+# --------------------------------------------------------------------------- #
+
+@router.post("/files/upload-image")
+async def upload_image(file: UploadFile = FastFile(...), db: Session = Depends(get_db)):
+    """Upload an image file; returns {id, filename, url}."""
+    filename = (file.filename or "").strip()
+    content = await file.read()
+    try:
+        data = save_image_upload(content, filename or "image.png")
+    except FileError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    rec = create_file_record(db, **data)
+    return {"id": rec.id, "filename": rec.filename, "url": f"/api/files/{rec.id}/view"}
+
+
+@router.get("/files/{file_id}/view")
+def view_image(file_id: str, db: Session = Depends(get_db)):
+    """Serve an image file for display in the browser."""
+    rec = db.get(FileRecord, file_id)
+    if rec is None:
+        raise HTTPException(status_code=404, detail="图片不存在")
+    from pathlib import Path
+    import mimetypes
+    path = Path(rec.path)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="图片不存在")
+    media_type = mimetypes.types_map.get(path.suffix.lower(), "image/jpeg")
+    return FileResponse(path, media_type=media_type, filename=rec.filename)
 
 
 # --------------------------------------------------------------------------- #

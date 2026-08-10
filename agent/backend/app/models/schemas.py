@@ -16,6 +16,7 @@ class ChatRequest(BaseModel):
     user_lat: float | None = Field(None, description="用户当前纬度（用于地图出行时间计算）")
     user_lon: float | None = Field(None, description="用户当前经度（用于地图出行时间计算）")
     file_id: str | None = Field(None, description="上传的文档文件ID（可选，docx 编辑）")
+    image_id: str | None = Field(None, description="上传的图片文件ID（可选，图片识别）")
 
 
 class ConversationCreate(BaseModel):
@@ -32,6 +33,7 @@ class MessageOut(BaseModel):
     map_data: dict | None = None
     weather_data: dict | None = None
     file_data: dict | None = None
+    image_data: dict | None = None
 
     @field_validator("map_data", mode="before")
     @classmethod
@@ -56,6 +58,16 @@ class MessageOut(BaseModel):
     @field_validator("file_data", mode="before")
     @classmethod
     def _parse_file_data(cls, v):
+        if isinstance(v, str) and v:
+            try:
+                return json.loads(v)
+            except (ValueError, TypeError):
+                return None
+        return v
+
+    @field_validator("image_data", mode="before")
+    @classmethod
+    def _parse_image_data(cls, v):
         if isinstance(v, str) and v:
             try:
                 return json.loads(v)

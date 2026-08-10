@@ -1,11 +1,14 @@
-"""File service: docx upload, text extraction, and in-place editing.
+"""File service: docx upload/edit + image upload for vision.
 
 Uses python-docx to read and modify .docx files while preserving formatting.
 Modified files are saved as NEW files (the original is never touched).
+Images are saved as-is and served via a view endpoint for display.
 """
 
 from __future__ import annotations
 
+import base64
+import mimetypes
 import uuid
 from pathlib import Path
 
@@ -16,6 +19,10 @@ from app.models.database import File
 
 UPLOAD_DIR = settings.data_dir / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+# Supported image formats
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
+MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10MB
 
 
 class FileError(Exception):
@@ -127,3 +134,37 @@ def apply_docx_edit(src_path: str, paragraph_index: int, new_text: str, filename
     ext = Path(filename).suffix or ".docx"
     new_name = f"{stem}_modified{ext}"
     return {"filename": new_name, "path": str(path), "role": "generated"}
+
+
+# --------------------------------------------------------------------------- #
+#  Image upload (for vision / OCR)
+# --------------------------------------------------------------------------- #
+
+def save_image_upload(content: bytes, filename: str) -> dict:
+    """Save an uploaded image; returns {filename, path, role}.
+
+    Validates extension and size. The original extension is preserved.
+    """
+    ext = Path(filename).suffix.lower()
+    if ext not in IMAGE_EXTENSIONS:
+        raise FileError(f"不支持的图片格式 {ext}，支持：{', '.join(sorted(IMAGE_EXTENSIONS))}")
+    if len(content) > MAX_IMAGE_SIZE:
+        raise FileError(f"图片过大（{len(content) // 1024 // 1024}MB），最大支持 {MAX_IMAGE_SIZE // 1024 // 1024}MB")
+
+    safe_name = Path(filename).name
+    fid = _new_id()
+    path = UPLOAD_DIR / f"{fid}{ext}"
+    path.write_bytes(content)
+    return {"filename": safe_name, "path": str(path), "role": "upload"}
+
+
+def image_to_base64_url(path: str) -> str:
+    """Read an image file and return a base64 data URL for the LLM API."""
+    p = Path(path)
+    if not p.exists():
+        raise FileError("图片文件不存在")
+    content = p.read_bytes()
+    ext = p.suffix.lower()
+    mime = mimetypes.types_map.get(ext, "image/jpeg")
+    b64 = base64.b64encode(content).decode("ascii")
+    return f"data:{mime};base64,{b64}"

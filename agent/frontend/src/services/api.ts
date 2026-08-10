@@ -102,6 +102,12 @@ export interface FileData {
   url: string
 }
 
+export interface ImageData {
+  id: string
+  filename: string
+  url: string
+}
+
 export interface Message {
   id?: string
   role: 'user' | 'assistant' | 'system'
@@ -113,6 +119,8 @@ export interface Message {
   weather_data?: WeatherData | string | null
   fileData?: FileData
   file_data?: FileData | string | null
+  imageData?: ImageData
+  image_data?: ImageData | string | null
 }
 
 // --------------------------------------------------------------------------- //
@@ -144,6 +152,10 @@ export async function getConversation(id: string): Promise<ConversationDetail> {
     if (m.file_data) {
       m.fileData =
         typeof m.file_data === 'string' ? JSON.parse(m.file_data) : m.file_data
+    }
+    if (m.image_data) {
+      m.imageData =
+        typeof m.image_data === 'string' ? JSON.parse(m.image_data) : m.image_data
     }
     return m
   })
@@ -245,6 +257,21 @@ export async function uploadFile(file: File): Promise<FileData> {
   return { id: data.id, filename: data.filename, url: `${API_BASE}/files/${data.id}/download` }
 }
 
+export async function uploadImage(file: File): Promise<ImageData> {
+  const form = new FormData()
+  form.append('file', file)
+  const resp = await fetch(`${API_BASE}/files/upload-image`, {
+    method: 'POST',
+    body: form,
+  })
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => null)
+    throw new Error(err?.detail || '上传图片失败')
+  }
+  const data = await resp.json()
+  return { id: data.id, filename: data.filename, url: `${API_BASE}/files/${data.id}/view` }
+}
+
 // --------------------------------------------------------------------------- //
 //  Streaming Chat (SSE)
 // --------------------------------------------------------------------------- //
@@ -267,6 +294,7 @@ export async function streamChat(
   userLat?: number,
   userLon?: number,
   fileId?: string | null,
+  imageId?: string | null,
 ): Promise<void> {
   const body: Record<string, any> = {
     conversation_id: conversationId,
@@ -278,6 +306,9 @@ export async function streamChat(
   }
   if (fileId) {
     body.file_id = fileId
+  }
+  if (imageId) {
+    body.image_id = imageId
   }
 
   const resp = await fetch(`${API_BASE}/chat`, {

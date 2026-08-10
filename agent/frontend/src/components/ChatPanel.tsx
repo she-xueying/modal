@@ -1,6 +1,6 @@
 import React from 'react'
 import { Input, Button, message } from 'antd'
-import { ArrowUpOutlined, RobotOutlined, MenuFoldOutlined, MenuUnfoldOutlined, StopOutlined, PaperClipOutlined, CloseOutlined } from '@ant-design/icons'
+import { ArrowUpOutlined, MenuFoldOutlined, MenuUnfoldOutlined, StopOutlined, PaperClipOutlined, CloseOutlined, CloudOutlined, SearchOutlined, FileTextOutlined } from '@ant-design/icons'
 import { useStore } from '../stores/useStore'
 import { streamChat, getConversation, truncateConversation, deleteMessage as deleteMessageApi, Message as ApiMessage, uploadFile, FileData } from '../services/api'
 import MessageBubble from './MessageBubble'
@@ -262,6 +262,18 @@ const ChatPanel: React.FC = () => {
     }
   }
 
+  const handleQuickClick = (text: string) => {
+    if (streaming) return
+    setInput('')
+    sendMessage(text, activeConversationId)
+  }
+
+  const quickCards = [
+    { icon: <CloudOutlined />, title: '天气查询', desc: '查询任意城市的实时天气与预报', prompt: '今天北京天气怎么样？' },
+    { icon: <SearchOutlined />, title: '联网搜索', desc: '搜索最新资讯、新闻与热点事件', prompt: '帮我搜索最近的科技新闻' },
+    { icon: <FileTextOutlined />, title: '文档编辑', desc: '上传 docx 文档，对话式修改内容', prompt: '帮我写一份本周工作周报' },
+  ]
+
   const ToggleButton = (
     <span
       className="chat-header-toggle"
@@ -281,12 +293,15 @@ const ChatPanel: React.FC = () => {
           <span className="chat-header-title">新对话</span>
         </div>
         <div className="empty-state">
-          <RobotOutlined className="empty-state-icon" />
-          <div className="empty-state-text">
-            您好呀，我是您的智能体助手，有什么可以帮助您的嘛
-          </div>
-          <div style={{ fontSize: 13, color: '#bbb' }}>
-            可以问我天气、编程问题、生活建议等，很乐意为您解答
+          <div className="welcome-title">有什么可以帮助您的嘛</div>
+          <div className="quick-cards">
+            {quickCards.map((card, i) => (
+              <div key={i} className="quick-card" onClick={() => handleQuickClick(card.prompt)}>
+                <span className="quick-card-icon" style={{ color: 'var(--primary-color)' }}>{card.icon}</span>
+                <span className="quick-card-title">{card.title}</span>
+                <span className="quick-card-desc">{card.desc}</span>
+              </div>
+            ))}
           </div>
         </div>
         <ChatInput

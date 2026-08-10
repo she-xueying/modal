@@ -31,6 +31,7 @@ from app.core.file_service import (
     apply_docx_edit,
     create_file_record,
     get_file_record,
+    image_to_base64_url,
     paragraph_indexed_text,
 )
 from app.models.database import Conversation, Message, Setting
@@ -96,6 +97,7 @@ def save_message(
     map_data: dict | None = None,
     weather_data: dict | None = None,
     file_data: dict | None = None,
+    image_data: dict | None = None,
 ) -> Message:
     """Persist a message and update conversation timestamp."""
     msg = Message(conversation_id=conv.id, role=role, content=content)
@@ -105,6 +107,8 @@ def save_message(
         msg.weather_data = json.dumps(weather_data, ensure_ascii=False)
     if file_data is not None:
         msg.file_data = json.dumps(file_data, ensure_ascii=False)
+    if image_data is not None:
+        msg.image_data = json.dumps(image_data, ensure_ascii=False)
     db.add(msg)
     conv.updated_at = datetime.now(timezone.utc)
     db.commit()
@@ -119,6 +123,7 @@ async def chat_stream(
     user_lat: float | None = None,
     user_lon: float | None = None,
     file_id: str | None = None,
+    image_id: str | None = None,
 ) -> AsyncGenerator[Any, None]:
     """Process a user message and yield response chunks (streaming).
 
@@ -144,7 +149,54 @@ async def chat_stream(
                 user_content = user_message + "（注意：上传的文档文件读取失败）"
         else:
             user_content = user_message + "（注意：未找到上传的文档）"
-    messages.append({"role": "user", "content": user_content})
+
+    # --- Image path: multimodal message (text + image) ---
+    has_image = False
+    if image_id:
+        img_rec = get_file_record(db, image_id)
+        if img_rec is not None:
+            from pathlib import Path
+            if Path(img_rec.path).exists():
+                try:
+                    b64_url = image_to_base64_url(img_rec.path)
+                    # Build multimodal content (OpenAI vision format)
+                    user_content_msg: dict[str, Any] = {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": user_content or "请识别图片中的内容"},
+                            {"type": "image_url", "image_url": {"url": b64_url}},
+                        ],
+                    }
+                    messages.append(user_content_msg)
+                    has_image = True
+                except FileError as e:
+                    user_content = user_message + f"（注意：图片读取失败：{e}）"
+                    messages.append({"role": "user", "content": user_content})
+            else:
+                user_content = user_message + "（注意：上传的图片文件不存在）"
+                messages.append({"role": "user", "content": user_content})
+        else:
+            user_content = user_message + "（注意：未找到上传的图片）"
+            messages.append({"role": "user", "content": user_content})
+    else:
+        messages.append({"role": "user", "content": user_content})
+
+    # --- Image path: streaming call directly (best UX for image descriptions) ---
+    if has_image:
+        full_response = ""
+        try:
+            async for chunk in llm_client.chat_stream(
+                messages=messages,
+                temperature=0.7,
+            ):
+                full_response += chunk
+                yield chunk
+        except LLMError as e:
+            yield f"[错误] 图片识别失败: {e}"
+        # Persist the assistant response
+        if full_response.strip():
+            save_message(db, conv, "assistant", full_response)
+        return
 
     # 2. Non-streaming call with tools to check if search/map is needed
     full_response = ""

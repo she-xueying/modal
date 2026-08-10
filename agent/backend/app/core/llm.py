@@ -51,7 +51,7 @@ class LLMClient:
 
     async def chat(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         temperature: float = 0.7,
         max_tokens: int = 4096,
         tools: list[dict] | None = None,
@@ -59,6 +59,7 @@ class LLMClient:
         """Synchronous (non-streaming) chat completion.
 
         Returns the full response dict from the API.
+        ``messages`` content can be a string or a list (multimodal: text + image_url).
         """
         payload: dict[str, Any] = {
             "model": self.model,
@@ -82,11 +83,14 @@ class LLMClient:
 
     async def chat_stream(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         temperature: float = 0.7,
         max_tokens: int = 4096,
     ) -> AsyncGenerator[str, None]:
-        """Streaming chat completion. Yields content delta strings."""
+        """Streaming chat completion. Yields content delta strings.
+
+        ``messages`` content can be a string or a list (multimodal).
+        """
         payload = {
             "model": self.model,
             "messages": messages,
@@ -131,7 +135,7 @@ class LLMClient:
 
     async def chat_with_tools(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         tools: list[dict],
         temperature: float = 0.7,
     ) -> dict[str, Any]:

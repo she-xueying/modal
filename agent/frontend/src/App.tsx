@@ -10,8 +10,10 @@ const App: React.FC = () => {
       locale={zhCN}
       theme={{
         token: {
-          colorPrimary: '#1677ff',
-          borderRadius: 8,
+          colorPrimary: '#b57edb',
+          borderRadius: 12,
+          colorBgContainer: '#ffffff',
+          boxShadow: '0 4px 24px rgba(180, 126, 219, 0.1)',
         },
       }}
     >

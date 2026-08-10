@@ -84,6 +84,7 @@ class Message(Base):
     map_data = Column(Text, nullable=True)  # JSON-encoded MapData (assistant)
     weather_data = Column(Text, nullable=True)  # JSON-encoded weather (assistant)
     file_data = Column(Text, nullable=True)  # JSON-encoded file info (assistant, e.g. modified docx)
+    image_data = Column(Text, nullable=True)  # JSON-encoded image info (user uploaded image)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
 
     conversation = relationship("Conversation", back_populates="messages")
@@ -117,7 +118,7 @@ def _ensure_columns() -> None:
     inspector = inspect(engine)
     if "messages" in inspector.get_table_names():
         cols = {c["name"] for c in inspector.get_columns("messages")}
-        for col in ("map_data", "weather_data", "file_data"):
+        for col in ("map_data", "weather_data", "file_data", "image_data"):
             if col not in cols:
                 with engine.begin() as conn:
                     conn.execute(text(f"ALTER TABLE messages ADD COLUMN {col} TEXT"))
