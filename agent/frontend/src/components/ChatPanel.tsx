@@ -431,7 +431,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="描述您的需求，点击发送即可"
-        autoSize={{ minRows: 5, maxRows: 12 }}
+        autoSize={{ minRows: 3, maxRows: 12 }}
         disabled={streaming}
       />
       {streaming ? (
