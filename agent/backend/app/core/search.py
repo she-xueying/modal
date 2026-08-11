@@ -74,7 +74,7 @@ WEB_SEARCH_TOOL = {
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "搜索关键词，用中文或英文描述要搜索的内容",
+                    "description": "搜索关键词，用中文或英文描述要搜索的内容；先纠正错别字再用准确关键词",
                 },
                 "max_results": {
                     "type": "integer",
@@ -101,7 +101,7 @@ MAP_SEARCH_TOOL = {
             "properties": {
                 "place": {
                     "type": "string",
-                    "description": "要查询的地点名称，如城市名、地标名等",
+                    "description": "要查询的地点名称，如城市名、地标名等；用户输入的地点名可能含错别字，请先纠正为正确名称再传入",
                 },
             },
             "required": ["place"],
@@ -124,7 +124,7 @@ WEATHER_SEARCH_TOOL = {
             "properties": {
                 "place": {
                     "type": "string",
-                    "description": "要查询天气的地点名称（城市、区县、地标等），用户未指定地点时可省略",
+                    "description": "要查询天气的地点名称（城市、区县、地标等），用户未指定地点时可省略；地点名含错别字时先纠正为正确名称再传入",
                 },
             },
             "required": [],
@@ -139,7 +139,9 @@ DOCX_EDIT_TOOL = {
         "description": (
             "当用户上传了 .docx 文档并要求修改文档中的某处内容时，调用此工具修改文档。"
             "文档内容已在上文以[段落索引]形式给出（文件ID也会给出）。"
-            "用户要求改哪一段，就在 paragraph_index 填对应索引，new_text 填修改后的完整段落内容（会替换整段）。"
+            "用 paragraph_index 指定要改的段落（对应上文[索引]），new_text 填修改后的完整段落内容（会替换整段）。"
+            "注意：用户描述的目标文字可能含错别字，应根据文档实际内容选择正确的段落；"
+            "若不确定段落索引，可用 match_text 填该段落包含的关键文字（取文档中实际存在的正确文本），系统会模糊定位到该段。"
             "修改后系统会生成一个新的文档供用户下载，原文档不会被改动。"
         ),
         "parameters": {
@@ -151,14 +153,18 @@ DOCX_EDIT_TOOL = {
                 },
                 "paragraph_index": {
                     "type": "integer",
-                    "description": "要修改的段落索引，从0开始，对应上文[索引]",
+                    "description": "要修改的段落索引，从0开始，对应上文[索引]；与 match_text 二选一",
+                },
+                "match_text": {
+                    "type": "string",
+                    "description": "要修改段落包含的关键文字（用文档中实际存在的正确文本），用于模糊定位；与 paragraph_index 二选一",
                 },
                 "new_text": {
                     "type": "string",
-                    "description": "修改后该段落的完整新内容",
+                    "description": "修改后该段落的完整新内容（用纠正后的正确内容）",
                 },
             },
-            "required": ["file_id", "paragraph_index", "new_text"],
+            "required": ["file_id", "new_text"],
         },
     },
 }

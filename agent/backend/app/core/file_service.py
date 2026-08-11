@@ -103,21 +103,50 @@ def paragraph_indexed_text(path: str, max_paras: int = 200, max_chars: int = 120
 #  Editing (creates a NEW modified file)
 # --------------------------------------------------------------------------- #
 
-def apply_docx_edit(src_path: str, paragraph_index: int, new_text: str, filename: str) -> dict:
+def find_paragraph_index(path: str, match_text: str) -> int | None:
+    """Fuzzy-locate the first paragraph containing match_text (whitespace-insensitive)."""
+    from docx import Document
+    doc = Document(path)
+    needle = "".join(match_text.split()).lower()
+    if not needle:
+        return None
+    for i, p in enumerate(doc.paragraphs):
+        hay = "".join(p.text.split()).lower()
+        if needle in hay:
+            return i
+    return None
+
+
+def apply_docx_edit(
+    src_path: str,
+    paragraph_index: int,
+    new_text: str,
+    filename: str,
+    match_text: str | None = None,
+) -> dict:
     """Replace one paragraph's text in a copy of the docx.
 
-    Returns a new file record payload {filename, path, role}.
+    Locates the paragraph by index, or by fuzzy text match when the index is
+    invalid (handles user typos in the target text). Returns the new file record
+    payload {filename, path, role, original_text, paragraph_index}.
     """
     from docx import Document
 
     if paragraph_index < 0:
-        raise FileError("段落索引无效")
+        if match_text:
+            found = find_paragraph_index(src_path, match_text)
+            if found is None:
+                raise FileError(f"未找到包含「{match_text}」的段落")
+            paragraph_index = found
+        else:
+            raise FileError("段落索引无效，或请提供要修改段落包含的关键文字 match_text")
     doc = Document(src_path)
     paras = doc.paragraphs
     if paragraph_index >= len(paras):
         raise FileError(f"段落索引超出范围（共 {len(paras)} 段，索引从 0 开始）")
 
     target = paras[paragraph_index]
+    original_text = target.text
     if target.runs:
         # Keep the first run's formatting; apply new text to it and clear the rest
         target.runs[0].text = new_text
@@ -133,7 +162,13 @@ def apply_docx_edit(src_path: str, paragraph_index: int, new_text: str, filename
     stem = Path(filename).stem or "document"
     ext = Path(filename).suffix or ".docx"
     new_name = f"{stem}_modified{ext}"
-    return {"filename": new_name, "path": str(path), "role": "generated"}
+    return {
+        "filename": new_name,
+        "path": str(path),
+        "role": "generated",
+        "original_text": original_text,
+        "paragraph_index": paragraph_index,
+    }
 
 
 # --------------------------------------------------------------------------- #

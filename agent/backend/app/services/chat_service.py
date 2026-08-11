@@ -203,6 +203,7 @@ async def chat_stream(
     saved_map_data: dict | None = None
     saved_weather_data: dict | None = None
     saved_file_data: dict | None = None
+    current_edit_path: str | None = None  # accumulated working file across multiple docx_edit calls in one turn
     try:
         resp = await llm_client.chat_with_tools(
             messages=messages,
@@ -280,25 +281,32 @@ async def chat_stream(
                 except (TypeError, ValueError):
                     para_idx = -1
                 new_text = str(fn_args.get("new_text", "") or "")
+                match_text = str(fn_args.get("match_text", "") or "")
                 try:
                     src = get_file_record(db, fid)
                     if src is None:
                         raise FileError("找不到要修改的文件")
                     from pathlib import Path
-                    if not Path(src.path).exists():
+                    base_path = current_edit_path or src.path
+                    if not Path(base_path).exists():
                         raise FileError("文件不存在")
-                    new_data = apply_docx_edit(src.path, para_idx, new_text, src.filename)
+                    new_data = apply_docx_edit(
+                        base_path, para_idx, new_text, src.filename,
+                        match_text=match_text or None,
+                    )
+                    current_edit_path = new_data["path"]
+                    original_text = new_data.pop("original_text", "")
+                    used_index = new_data.pop("paragraph_index", para_idx)
                     new_rec = create_file_record(db, original_id=src.id, **new_data)
                     saved_file_data = {
                         "id": new_rec.id,
                         "filename": new_rec.filename,
                         "url": f"/api/files/{new_rec.id}/download",
                     }
-                    # Yield file data to frontend for a download card
-                    yield {"type": "file", "data": saved_file_data}
                     tool_result = (
                         f"文档修改成功，已生成修改后的文档：{new_rec.filename}"
-                        f"（文件ID：{new_rec.id}）"
+                        f"（文件ID：{new_rec.id}）。\n"
+                        f"修改位置：第 {used_index} 段\n原文：{original_text}\n修改后：{new_text}"
                     )
                 except Exception as e:
                     tool_result = f"文档修改失败: {e}"
@@ -319,6 +327,10 @@ async def chat_stream(
                 "tool_call_id": tc.get("id", ""),
                 "content": tool_result,
             })
+
+        # Yield the final (accumulated) edited file once, if any docx edits happened
+        if saved_file_data is not None:
+            yield {"type": "file", "data": saved_file_data}
 
         # 4. Streaming call with tool results to generate final answer
         try:

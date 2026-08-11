@@ -151,7 +151,9 @@ const ChatPanel: React.FC = () => {
           setLastAssistantFileData(data)
         },
         onError: (err) => {
-          updateLastAssistantMessage(`[错误] ${err}`)
+          console.error('Stream error:', err)
+          // 不向用户展示具体错误细节，只给友好提示（技术细节仅记入控制台）
+          updateLastAssistantMessage('抱歉，刚才出错了，请稍后重试')
           message.error('生成回复时出错')
         },
         onDone: () => {
@@ -165,7 +167,9 @@ const ChatPanel: React.FC = () => {
           updateLastAssistantMessage('[已停止]')
         }
       } else {
-        updateLastAssistantMessage(`[错误] ${e.message}`)
+        console.error('Request failed:', e)
+        // 不向用户展示具体错误细节，只给友好提示（技术细节仅记入控制台）
+        updateLastAssistantMessage('抱歉，刚才出错了，请稍后重试')
         message.error('请求失败，请检查后端服务是否启动')
       }
     } finally {

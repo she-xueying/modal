@@ -145,3 +145,51 @@
 - frontend/src/services/api.ts：FileData 类型、uploadFile、file 事件
 - frontend/src/stores/useStore.ts：setLastAssistantFileData
 - frontend/src/styles/global.css：上传图标/附件/文件卡片样式
+
+---
+
+## 错别字处理
+
+> 简介：用户输入含错别字（如“北jing”“天汽”“知能体”）时，模型能根据上下文理解真实意图，纠正后再回答或调用工具，避免被错别字误导。
+
+### 背景
+
+用户打字容易出错，把地点、关键词或文档中的目标文字写错（如“杭洲”“天汽”“知能体”）。如果不做容错处理：
+- 模型可能被错别字误导，把写错的词当成独立实体，导致答非所问；
+- 带错别字的地点/关键词直接传给地图/天气/搜索工具，查询失败或返回错误结果；
+- 让模型修改 docx 时，用户描述的目标文字和文档实际文字对不上，模型改错段落或找不到要改的地方。
+
+### 使用的方法
+
+1. 系统提示词（prompts.py）增加错别字容错规则：先根据上下文理解真实意图；调用工具前把地点名、搜索关键词、要匹配的文本先纠正再传参；无法确定时礼貌提示“您说的是否是XXX”。
+2. 各工具参数描述（search.py）明确“先纠正错别字再传入准确内容”，引导模型把纠正后的值传给工具，而不是把错字原样传入。
+3. docx_edit 工具新增 match_text 参数：模型不确定段落索引时，可填文档中实际存在的正确文字，后端按该文字模糊定位段落后再修改；paragraph_index 改为可选。
+4. file_service 新增 find_paragraph_index 模糊定位（忽略空白/大小写），apply_docx_edit 支持 match_text 定位，并返回该段原文本与最终段落索引。
+5. chat_service 支持 match_text 定位，工具结果回显“修改位置/原文/修改后”，让模型能核对是否改对了。
+
+### 开发中遇到的难点
+
+1. 模型会被错别字误导
+   - 现象：把“知能体”当成无关内容、“杭洲”等地名不经纠正直接查询
+   - 解决：提示词 + 工具描述双重约束，规定“先纠正再传参”，端到端验证通过
+
+2. 真实 LLM 偶发瞬时故障（非代码问题）
+   - 现象：偶发把 tool call 当文本输出（回复中出现 `{lng{weather_search}(...)` 之类），或连接报 “All connection attempts failed”
+   - 原因：多为限流/瞬时波动
+   - 解决：重试即可；自动化测试连测多次确认稳定性，勿因单次失败误判
+
+3. docx 同一轮多次编辑生成多个“部分修改”文件
+   - 现象：文档含两处“智能体”，模型连续调用两次 docx_edit，生成两个文件、每个只改了一处，助手却声称“两处已全部替换”
+   - 原因：每次 docx_edit 都基于原始上传文件生成新文件，多次修改互不叠加
+   - 解决：chat_service 记录“当前工作文件”，后续修改基于上一次生成的副本继续累积；整个回合只在末尾推送一次最终文件
+
+4. 测试环境网络受限
+   - 现象：后端在受限环境启动后 LLM 调用报 “All connection attempts failed”（直连 ARK 被 WinError 10013 阻断）
+   - 解决：后端/需真实 LLM 的测试在无沙箱（提权）环境启动；测试脚本设 NO_PROXY=127.0.0.1,localhost,::1
+
+### 修改的文件
+
+- backend/app/core/prompts.py：系统提示词增加错别字容错规则（理解真实意图、纠正后再传参、不确定时礼貌确认）
+- backend/app/core/search.py：地图/天气/搜索工具参数描述提示先纠正错别字；docx_edit 新增 match_text 参数，paragraph_index 改为可选
+- backend/app/core/file_service.py：新增 find_paragraph_index 模糊定位；apply_docx_edit 支持 match_text 定位，返回原文本与最终段落索引
+- backend/app/services/chat_service.py：docx_edit 支持 match_text；多次编辑基于上一次副本累积，最终只推送一个文件；工具结果回显修改位置/原文/修改后
