@@ -185,6 +185,11 @@
 - **问题**：多次启动 Vite 端口累积占用；react-leaflet 默认装 v5 不兼容 React 18
 - **解决**：重启前清理进程；`npm install leaflet react-leaflet@4 @types/leaflet --legacy-peer-deps`
 
+### 13. Start-Process 报“已添加项”环境变量重复（Path / PATH）
+- **问题**：机器进程环境里同时存在 `Path` 和 `PATH` 两个同名变量，`Start-Process` 启动后台进程时报错 `已添加项。字典中的关键字:“Path”所添加的关键字:“PATH”`
+- **解决**：启动前用 `[Environment]::SetEnvironmentVariable('PATH',$null,'Process')` 去掉重复项，再执行 `Start-Process`；或改用 `cmd /c start` 启动
+- **教训**：本机存在大小写不同的重复环境变量，碰到 `Start-Process` 的 ArgumentException 先检查 `Path`/`PATH`
+
 ---
 
 ## 八、环境与启动方式
