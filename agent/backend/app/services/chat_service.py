@@ -35,6 +35,8 @@ from app.core.file_service import (
     paragraph_indexed_text,
 )
 from app.models.database import Conversation, Message, Setting
+from app.core.memory_service import build_memory_prompt, get_all_memories, schedule_extraction
+
 
 DEFAULT_LOCATION_KEY = "default_weather_location"
 
@@ -83,7 +85,12 @@ def load_history(db: Session, conv: Conversation) -> list[dict[str, str]]:
     # Keep only the most recent N messages
     recent = messages[-MAX_CONTEXT_MESSAGES:]
 
-    history: list[dict[str, str]] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    # Inject cross-conversation memories into system prompt
+    memories = get_all_memories(db)
+    memory_block = build_memory_prompt(memories)
+    system_content = SYSTEM_PROMPT + ("\n\n" + memory_block if memory_block else "")
+
+    history: list[dict[str, str]] = [{"role": "system", "content": system_content}]
     for msg in recent:
         history.append({"role": msg.role, "content": msg.content})
     return history
@@ -364,8 +371,12 @@ async def chat_stream(
         or saved_file_data is not None
     ):
         save_message(
-            db, conv, "assistant", full_response,
-            map_data=saved_map_data,
-            weather_data=saved_weather_data,
-            file_data=saved_file_data,
-        )
+           db, conv, "assistant", full_response,
+           map_data=saved_map_data,
+           weather_data=saved_weather_data,
+           file_data=saved_file_data,
+       )
+
+    # 6. Extract memories from this exchange (background thread, non-blocking)
+    if full_response.strip():
+        schedule_extraction(conv.id, user_message, full_response)

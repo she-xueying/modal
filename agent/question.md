@@ -193,3 +193,125 @@
 - backend/app/core/search.py：地图/天气/搜索工具参数描述提示先纠正错别字；docx_edit 新增 match_text 参数，paragraph_index 改为可选
 - backend/app/core/file_service.py：新增 find_paragraph_index 模糊定位；apply_docx_edit 支持 match_text 定位，返回原文本与最终段落索引
 - backend/app/services/chat_service.py：docx_edit 支持 match_text；多次编辑基于上一次副本累积，最终只推送一个文件；工具结果回显修改位置/原文/修改后
+ 
+ ---
+ 
+ ## 记忆功能（Memory）
+ 
+ > 简介：实现跨会话的长期记忆。一个会话中用户透露的信息（姓名、城市、偏好、正在进行的项目等），在新会话中助手也能自然地参考。记忆功能对用户完全无感知，前端不增加任何管理入口。
+ 
+ ### 核心思路
+ 
+ 两条路径，一写一读：
+ 
+ **写路径（记忆提取）**：每轮对话结束后（assistant 回复完成），异步调用 LLM 从这轮交互中提取值得长期记忆的事实，存入 `memories` 表。这一步不阻塞用户的流式回复。
+ 
+ **读路径（记忆注入）**：`load_history` 构建 messages 时，从 `memories` 表取出记忆，拼接到系统提示词末尾。每一轮对话都能看到全部跨会话记忆。
+ 
+ 流程示例：
+ ```
+ 会话 A：用户说"我叫张三，在杭州做前端开发"
+   -> 助手回复完毕
+   -> 异步：LLM 提取出两条记忆
+     - {category: "personal_info", content: "用户叫张三"}
+     - {category: "personal_info", content: "用户在杭州做前端开发"}
+   -> 存入 memories 表
+ 
+ 会话 B（新建）：用户问"你知道我是谁吗？"
+   -> load_history 时查出全部记忆
+   -> 系统提示词追加记忆段落
+   -> LLM 看到记忆，自然回复"你是张三，在杭州做前端开发"
+ ```
+ 
+ ### 开发过程
+ 
+ #### 阶段一：数据库层 -- Memory 模型
+ 
+ 在 `database.py` 新增 `Memory` 表，与 `Conversation`/`Message`/`Setting`/`File` 平级：
+ 
+ ```python
+ class Memory(Base):
+     __tablename__ = "memories"
+     id = Column(String(32), primary_key=True, default=_uuid)
+     category = Column(String(50), nullable=False)  # personal_info / preference / fact / context
+     content = Column(Text, nullable=False)
+     source_conversation_id = Column(String(32), nullable=True)
+     created_at = Column(DateTime(timezone=True), default=_utcnow)
+     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+ ```
+ 
+ 分类设计：
+ - `personal_info`：姓名、城市、职业、年龄等个人信息
+ - `preference`：喜好、习惯、技术栈偏好等
+ - `fact`：用户提到的重要事实（如"下周要考试"）
+ - `context`：正在进行的项目、任务等上下文
+ 
+ `_ensure_columns` 中补上 memories 表的自动创建逻辑。
+ 
+ #### 阶段二：记忆服务 -- memory_service.py
+ 
+ 新建 `app/core/memory_service.py`，封装三个核心函数：
+ 
+ 1. `extract_memories(user_message, assistant_response) -> list[dict]`
+    - 调用 LLM（非流式，temperature=0.0），用精简提示词提取记忆
+    - 提示词要求只提取明确事实，不猜测；返回 JSON 数组；无值得记忆的内容返回空数组
+    - 前置跳过：用户消息过短（<10 字）或纯工具调用时跳过提取，节省成本
+ 
+ 2. `get_all_memories(db, limit=50) -> list[Memory]`
+    - 按 updated_at 倒序取最近 N 条
+ 
+ 3. `build_memory_prompt(memories) -> str`
+    - 将记忆列表格式化为自然语言段落，拼接到系统提示词末尾
+    - 格式：`以下是关于用户的长期记忆，请在回复时自然地参考这些信息：\n- [个人信息] 用户叫张三\n...`
+ 
+ #### 阶段三：接入聊天流程
+ 
+ `chat_service.py` 两处改动：
+ 
+ **注入（读路径）**：`load_history` 中取出记忆，拼接到 `SYSTEM_PROMPT` 后：
+ 
+ ```python
+ def load_history(db, conv):
+     ...
+     memories = db.query(Memory).order_by(Memory.updated_at.desc()).limit(50).all()
+     memory_block = build_memory_prompt(memories)
+     system_content = SYSTEM_PROMPT + ("\n\n" + memory_block if memory_block else "")
+     history = [{"role": "system", "content": system_content}]
+     ...
+ ```
+ 
+ **提取（写路径）**：`chat_stream` 末尾，当 `full_response` 积累完毕并持久化后，异步调用 `extract_memories`：
+ 
+ ```python
+ # 5. Persist assistant response
+ if full_response.strip() or ...:
+     save_message(db, conv, "assistant", full_response, ...)
+ 
+ # 6. Extract memories (async, non-blocking)
+ import asyncio
+ asyncio.create_task(_extract_and_save(db, conv.id, user_message, full_response))
+ ```
+ 
+ 关键决策：
+ - 每轮提取（非会话结束时）：用户可能中途放弃会话，按轮提取不遗漏
+ - 异步执行：不影响流式回复速度
+ - MVP 不做自动去重：LLM 看到多条相似记忆能自行理解；后续可加 LLM 去重/合并
+ - 提取用 temperature=0.0 确保稳定输出
+ 
+ #### 阶段四：验证
+ 
+ 端到端测试：
+ 1. 会话 A 中告诉助手个人信息（姓名/城市/职业）
+ 2. 新建会话 B，询问相关信息
+ 3. 验证助手能正确引用会话 A 中的信息
+ 
+ ### 遇到的问题
+ 
+ （开发过程中补充）
+ 
+ ### 修改的文件
+ 
+ - backend/app/models/database.py：新增 Memory 模型；_ensure_columns 补 memories 表
+ - backend/app/core/memory_service.py：新建，记忆提取/查询/格式化
+ - backend/app/services/chat_service.py：load_history 注入记忆；chat_stream 末尾异步提取记忆
+ - backend/app/core/prompts.py：（可能微调系统提示词，增加记忆参考引导）

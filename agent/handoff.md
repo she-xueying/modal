@@ -1,13 +1,13 @@
 # 项目交接文档 handoff.md
 
 > 本文档面向全新会话，提供完整的项目背景、当前进度、卡点、下一步计划及踩坑记录。
-> 最后更新时间：2026-08-11
+> 最后更新时间：2026-08-12
 
 ---
 
 ## ⚠️ 当前状态（新会话必读）
 
-**本会话的两个任务均已全部完成并提交，无未提交改动、无阻塞卡点。**
+**本会话三个功能均已完成并提交，无未提交改动、无阻塞卡点。**
 
 ### 任务一：错别字处理（错字容错）—— 提交 9f88f91f ✅
 用户输入含错别字（如"北jing""天汽""知能体"）时，助手能根据上下文理解真实意图、纠正后再回答或调用工具，避免被错别字误导；docx 修改时支持用"文档中实际存在的正确文字"模糊定位段落。
@@ -24,6 +24,25 @@
 
 ### 任务二：前端错误提示友好化 —— 提交 03be811e ✅
 出错时不再把具体技术错误渲染进聊天气泡，改为友好提示"抱歉，刚才出错了，请稍后重试"；技术细节仅记入浏览器 `console.error`，便于排查。
+
+### 任务三：记忆功能（Memory，跨会话记忆）—— 已完成 ✅
+实现跨会话的长期记忆：一个会话中用户透露的信息（姓名、城市、职业、偏好、正在进行的事等），在新会话中助手也能自然地参考。记忆功能对用户完全无感知，前端不增加任何管理入口。
+
+实现方式（两条路径）：
+1. **写路径（记忆提取）**：每轮对话结束后（assistant 回复完成），在后台守护线程中用 LLM 从本轮交互提取值得长期记忆的事实，存入 memories 表。提取用独立 LLMClient + 独立事件循环，彻底脱离请求生命周期，不阻塞流式回复。
+2. **读路径（记忆注入）**：load_history 构建 messages 时，从 memories 表取最近 50 条记忆，格式化后拼接到系统提示词末尾。每一轮对话都能看到全部跨会话记忆。
+3. **分类**：personal_info（姓名/城市/职业）、preference（喜好/习惯）、fact（重要事实）、context（正在做的事）。
+
+新增文件/改动：
+- database.py：新增 Memory 模型（memories 表）
+- memory_service.py（新建）：extract_memories/get_all_memories/build_memory_prompt/schedule_extraction（后台线程）
+- chat_service.py：load_history 注入记忆；chat_stream 末尾调用 schedule_extraction 异步提取
+
+已验证（端到端，真实 LLM）：
+- 会话 A 输入"我叫陈晨，在成都做数据分析师，喜欢跑步和读书" → 后台异步提取 5 条记忆写入 memories 表 ✅
+- 新建会话 B 问"你还记得我是谁吗？我平时喜欢做什么？" → 助手正确回复"陈晨，成都的数据分析师，喜欢读书和跑步" ✅
+
+> 技术说明：记忆提取提示词中的 JSON 示例花括号需写成 {{}} 转义，否则 .format() 会抛 KeyError；记忆提取必须用后台线程（asyncio.create_task 在请求结束后会被取消），且线程内用独立 LLMClient 避免跨事件循环问题。
 
 **服务状态**：后端 uvicorn 运行在 127.0.0.1:8000，前端 Vite 运行在 5173（`[::1]`）。注意：后端必须在**无沙箱（提权）环境**启动，否则无法访问外部 LLM（ARK，直连被 WinError 10013 阻断）。
 
@@ -43,6 +62,7 @@
 - 地图查询（地点定位、当前时间、出行时长）
 - 天气查询（实时天气、7天预报、24小时、详情指标、默认地点）
 - 文档编辑（上传 docx、对话式修改、下载修改后文档）
+- 跨会话记忆（Memory，无感知：记住用户姓名/城市/偏好/正在做的事，新会话可参考）
 - 图像识别 / 周报生成 / 文档总结 / 论文流程图（未开发）
 
 项目遵循 `DEVELOPMENT.md` 的 6 阶段计划；当前 **Phase 1（核心聊天框架 + 地图 + 天气 + 文档编辑）已完成**。
@@ -295,6 +315,7 @@ curl http://127.0.0.1:8000/api/settings/default-location
 - `app/core/weather_service.py`：**新增**，Open-Meteo 查询、7天/24小时/详情、weather_search、默认地点兜底
 - `app/core/map_service.py`：地图服务（geocode、timezone、travel_info、map_search）
 - `app/core/search.py`：工具定义（WEB/MAP/WEATHER/DOCX_EDIT）
+- `app/core/memory_service.py`：**新增**，跨会话记忆提取/查询/格式化/后台线程调度
 - `app/core/llm.py`：LLM 客户端，流式异常包装为 LLMError
 - `app/services/chat_service.py`：流式聊天，各工具特殊处理（yield dict）+ 持久化
 - `app/api/chat.py`：SSE / CRUD / 文件上传下载 / 默认地点；**本次修复点（用户消息 file_data）**

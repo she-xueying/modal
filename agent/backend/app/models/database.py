@@ -112,6 +112,19 @@ class File(Base):
     created_at = Column(DateTime(timezone=True), default=_utcnow)
 
 
+class Memory(Base):
+    """A long-term memory extracted from conversations (cross-session)."""
+
+    __tablename__ = "memories"
+
+    id = Column(String(32), primary_key=True, default=_uuid)
+    category = Column(String(50), nullable=False)  # personal_info | preference | fact | context
+    content = Column(Text, nullable=False)
+    source_conversation_id = Column(String(32), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
 def _ensure_columns() -> None:
     """Add missing columns to existing tables (lightweight dev migration)."""
     from sqlalchemy import inspect, text
